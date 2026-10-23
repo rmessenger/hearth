@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Hearth" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#98452D</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <color name="icon_background">#23372F</color>
+</resources>

@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Hearth</string>
+    <string name="widget_description">Your current audiobook and playback controls</string>
+    <string name="back_ten">Back 10 seconds</string>
+    <string name="forward_thirty">Forward 30 seconds</string>
+    <string name="toggle_playback">Play or pause</string>
+    <string name="back_symbol">−10</string>
+    <string name="forward_symbol">+30</string>
+    <string name="play_symbol">▶</string>
+</resources>

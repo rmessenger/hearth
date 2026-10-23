@@ -4,7 +4,7 @@ An offline audiobook player for Android 13 and newer, written in Kotlin and Jetp
 
 ## Use it
 
-Install the debug APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account or network permission is required.
+Install the signed APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account or network permission is required.
 
 The library refreshes on return to the app and checks for changes while open. There is no reload button. Keep original files in the selected folder; Hearth reads them in place.
 
@@ -31,9 +31,10 @@ Requirements: JDK 21, Android SDK platform 36, and Android SDK build tools. Andr
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 ./gradlew assembleDebug
 ./gradlew testDebugUnitTest lintDebug
+./gradlew assembleRelease testReleaseUnitTest lintRelease
 ```
 
-The APK is `app/build/outputs/apk/debug/app-debug.apk`. It uses the local Android debug signing key. Configure a release signing key before distributing a production release; no signing secrets are committed.
+The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. The optimized, non-debuggable release APK is `app/build/outputs/apk/release/app-release-unsigned.apk`; R8 code optimization and resource shrinking are enabled. Sign it with `apksigner` before installing. For a personal upgrade over an existing debug installation, use the same local debug key to retain data. This does not enable debugging in the release build. Use a dedicated release key for production distribution; no signing secrets are committed.
 
 ## Device tests
 

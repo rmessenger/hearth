@@ -1,5 +1,12 @@
 # Validation
 
+## Resume after navigation
+
+- Confirmed the original bug with a real chaptered M4B: selecting the chapter at 40 seconds, then pressing Play, resumed at 35 seconds.
+- Android 16: all eight device tests pass, including preserving paused seeks within and across files, chapter navigation with resume rewind enabled, and ordinary pause/resume rewind.
+- Debug and optimized release builds, both lint checks, and all 15 JVM tests in each variant pass.
+- Android 13: manually verified the optimized release with The Lantern Keeper using pause, chapter scrubbing, Next, and Play. Playback stays in the selected chapter.
+
 ## Version 0.1.2
 
 - Release build, R8 optimization, and release lint pass.

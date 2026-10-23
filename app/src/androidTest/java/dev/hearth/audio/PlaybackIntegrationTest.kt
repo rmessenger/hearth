@@ -117,7 +117,7 @@ class PlaybackIntegrationTest {
     }
     @Test fun openingABookFromTheLibraryWaitsForAnExplicitPlay() = runBlocking {
         device.wait(Until.findObject(By.clazz("android.widget.EditText")), 5000).text = name
-        device.wait(Until.findObject(By.text(name)), 5000).click()
+        device.wait(Until.findObject(By.text(name).clazz("android.widget.TextView")), 5000).click()
         withTimeout(5000) { PlaybackService.state.first { it.bookId == book.id } }
         assertTrue(device.wait(Until.hasObject(By.desc("Play")), 5000))
         delay(1200)
@@ -140,15 +140,26 @@ class PlaybackIntegrationTest {
         val chapterBook = library.books.first { it.title == chapterName }
         assertEquals(listOf("The Beginning", "The Journey", "The Homecoming"), chapterBook.chapters.map { it.title })
         device.wait(Until.findObject(By.clazz("android.widget.EditText")), 5000).text = chapterName
-        device.wait(Until.findObject(By.text(chapterName)), 5000).click()
+        device.wait(Until.findObject(By.text(chapterName).clazz("android.widget.TextView")), 5000).click()
         withTimeout(5000) { PlaybackService.state.first { it.bookId == chapterBook.id } }
         assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 1 OF 3")), 5000))
+        onMain { repo.preferences.edit().putInt("rewind", 5).apply(); controller.play() }
+        withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        onMain { controller.pause() }
+        withTimeout(5000) { PlaybackService.state.first { !it.playing } }
+        onMain { controller.seekTo(0, 20_000) }
+        withTimeout(5000) { PlaybackService.state.first { it.positionMs == 20_000L } }
         clickPlayerControl("Next chapter")
         withTimeout(5000) { PlaybackService.state.first { it.positionMs == 40_000L } }
         assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 2 OF 3")), 5000))
         assertTrue(device.hasObject(By.text("The Journey")))
         assertTrue(device.hasObject(By.text("0:40 left in chapter")))
         assertFalse(onMain { controller.playWhenReady })
+        delay(3200)
+        clickPlayerControl("Play")
+        val resumed = withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        assertTrue("Resume must stay in the selected chapter: $resumed", resumed.positionMs in 40_000L..42_000L)
+        onMain { controller.pause(); repo.preferences.edit().putInt("rewind", 0).apply() }
         onMain { controller.setPlaybackSpeed(2f); controller.seekTo(0, 50_000) }
         assertTrue(device.wait(Until.hasObject(By.text("0:15 left in chapter")), 5000))
         clickPlayerControl("Chapters")
@@ -166,6 +177,34 @@ class PlaybackIntegrationTest {
         clickPlayerControl("Next chapter")
         withTimeout(5000) { PlaybackService.state.first { it.playing && it.positionMs >= 80_000 } }
         assertTrue(onMain { controller.playWhenReady })
+    }
+    @Test fun ordinaryResumeStillRewindsButPausedSeeksKeepTheirPosition() = runBlocking {
+        openBook()
+        onMain { repo.preferences.edit().putInt("rewind", 5).apply(); controller.seekTo(0, 60_000); controller.play() }
+        withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        onMain { controller.pause() }
+        val paused = withTimeout(5000) { PlaybackService.state.first { !it.playing } }
+        delay(3200)
+        onMain { controller.play() }
+        val resumed = withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        assertTrue("Ordinary resume should rewind five seconds", paused.positionMs - resumed.positionMs in 4000L..5500L)
+        onMain { controller.pause() }
+        withTimeout(5000) { PlaybackService.state.first { !it.playing } }
+        onMain { controller.seekTo(0, 80_000) }
+        withTimeout(5000) { PlaybackService.state.first { it.positionMs == 80_000L } }
+        delay(3200)
+        onMain { controller.play() }
+        val sought = withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        assertTrue("Resume should preserve a scrubbed position", sought.positionMs in 80_000L..82_000L)
+        onMain { controller.pause() }
+        withTimeout(5000) { PlaybackService.state.first { !it.playing } }
+        onMain { controller.seekTo(1, 0) }
+        withTimeout(5000) { PlaybackService.state.first { it.trackIndex == 1 && it.positionMs == 0L } }
+        delay(3200)
+        onMain { controller.play() }
+        val nextFile = withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        assertEquals("Resume should preserve the selected file", 1, nextFile.trackIndex)
+        assertTrue(nextFile.positionMs < 2000)
     }
     private fun clickPlayerControl(description: String) {
         assertTrue(UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(description)))

@@ -69,8 +69,10 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
         player.skipSilenceEnabled = repo.preferences.getBoolean("skipSilence", false)
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying) pausedAt = SystemClock.elapsedRealtime()
                 save(); publish(); HearthWidget.updateAll(this@PlaybackService)
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                pausedAt = if (playWhenReady) 0 else SystemClock.elapsedRealtime()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && endOfTrack) {
@@ -80,6 +82,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                 save(); publish()
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) pausedAt = 0
                 if (reason == Player.DISCONTINUITY_REASON_SEEK && currentBookId.isNotEmpty()) {
                     repo.history(currentBookId, oldPosition.mediaItem?.localConfiguration?.uri?.toString().orEmpty(), oldPosition.positionMs, "Before seeking")
                 }
@@ -117,7 +120,9 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
             override fun play() {
                 playbackError = null
                 val rewind = repo.preferences.getInt("rewind", 5)
-                if (pausedAt > 0 && SystemClock.elapsedRealtime() - pausedAt > 3000 && rewind > 0) skip(-rewind * 1000L)
+                val shouldRewind = pausedAt > 0 && SystemClock.elapsedRealtime() - pausedAt > 3000 && rewind > 0
+                pausedAt = 0
+                if (shouldRewind) skip(-rewind * 1000L)
                 if (player.playbackState == Player.STATE_ENDED) player.seekTo(0, 0)
                 if (player.playbackState == Player.STATE_IDLE) player.prepare()
                 super.play()

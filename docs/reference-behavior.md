@@ -18,7 +18,7 @@ The free installation automatically offered “Basic + Full (30 days left)”. N
 | Artwork | Embedded artwork rendered centrally with a play overlay and tinted background; separately copied folder images did not render in this reference setup | Folder JPG/PNG artwork or embedded metadata, with an original fallback treatment |
 | Extras | Cast, conversion, rotation gestures, repeat, and online artwork features are visible | Scope recorded in README; no claim of complete feature parity |
 
-Hearth's identity, interface, icon, and demo artwork are original. The goal is an independently implemented local audiobook player, not a pixel-for-pixel copy.
+Hearth's identity, interface, and icon are original. The goal is an independently implemented local audiobook player, not a pixel-for-pixel copy.
 
 ## Automatic refresh
 

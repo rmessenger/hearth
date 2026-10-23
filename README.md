@@ -1,6 +1,6 @@
 # Hearth
 
-An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Inspired by the useful listening workflows in Smart AudioBook Player, with an original name, icon, interface, and demo book.
+An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Inspired by the useful listening workflows in Smart AudioBook Player, with an original name, icon, and interface.
 
 **Coming soon to Google Play.**
 
@@ -59,9 +59,5 @@ scripts/seed-test-library.sh
 ```
 
 The seed script needs `adb` and `ffmpeg` in PATH. Tests cover automatic addition/removal, natural ordering, cover detection, speed/position persistence, background playback, media pause, cross-file seeks/history, and end-of-file sleep. JVM tests cover timeline arithmetic and both M4B chapter formats. See [validation notes](docs/validation.md).
-
-## Original demo
-
-`demo/The Lantern Keeper` contains three original narrated MP3 chapters and a cover. Copy that directory beneath your audiobook root. `scripts/make-demo.py` recreates the narration using macOS `say` and ffmpeg. Artwork provenance and the generation prompt are in [demo/ARTWORK.md](demo/ARTWORK.md).
 
 [Reference exploration](docs/reference-behavior.md) distinguishes observed behavior from implementation choices. This project is independent of Smart AudioBook Player and its publisher.

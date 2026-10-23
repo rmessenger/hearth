@@ -1,6 +1,15 @@
 # Hearth
 
-An offline audiobook player for Android 13 and newer, written in Kotlin and Jetpack Compose. Inspired by the useful listening workflows in Smart AudioBook Player, with an original name, icon, interface, and demo book.
+An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Inspired by the useful listening workflows in Smart AudioBook Player, with an original name, icon, interface, and demo book.
+
+**Coming soon to Google Play.**
+
+## Screenshots
+
+<p>
+  <img src="docs/screenshots/library.png" alt="Hearth library with audiobook covers and automatic refresh" width="300" />
+  <img src="docs/screenshots/player.png" alt="Hearth player showing chapter navigation and remaining time" width="300" />
+</p>
 
 ## Use it
 

@@ -141,17 +141,16 @@ fun Hearth(repo: LibraryRepository) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
-                    "Library" -> LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, true) }, { book -> selectedId = book.id; dialog = "Book options" })
+                    "Library" -> LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" })
                     "Player" -> if (currentBook != null) PlayerScreen(currentBook, playback,
                         toggle = { if (playback.playing) controller?.pause() else controller?.play() },
                         skip = { delta -> command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) }) },
                         seek = { value -> val (index, position) = BookMath.locate(currentBook, value); controller?.seekTo(index, position) },
-                        previous = { controller?.seekToPreviousMediaItem() }, next = { controller?.seekToNextMediaItem() },
                         action = { name -> when (name) { "Speed", "Sleep timer", "Add bookmark", "Sound" -> showDialog(name); else -> screen = name } })
                         else EmptyState("Choose your next story", "Open an audiobook from your library to start listening.", "Open library", { screen = "Library" })
                     "Settings" -> SettingsScreen(repo, theme, { value -> theme = value; repo.preferences.edit().putString("theme", value).apply() }, { pickFolder.launch(repo.root) }, { command(PlaybackService.EFFECTS) }, { screen = "Listening statistics" })
                     "Listening statistics" -> StatisticsScreen(library.books, progress)
-                    "Bookmarks", "History", "Characters", "Chapters" -> if (currentBook != null) NotesScreen(screen, currentBook, progress[currentBook.id] ?: BookProgress(), repo,
+                    "Bookmarks", "History", "Characters", "Chapters" -> if (currentBook != null) NotesScreen(screen, currentBook, progress[currentBook.id] ?: BookProgress(), playback, repo,
                         { index, position -> controller?.seekTo(index, position); screen = "Player" }, { showDialog(it) })
                 }
             }
@@ -264,26 +263,41 @@ private fun EmptyState(title: String, description: String, button: String, actio
 }
 
 @Composable
-private fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, previous: () -> Unit, next: () -> Unit, action: (String) -> Unit) {
+private fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, action: (String) -> Unit) {
     val track = book.tracks.getOrNull(state.trackIndex) ?: return
     val absolute = BookMath.absolute(book, track.uri, state.positionMs)
-    var dragPosition by remember(book.id) { mutableStateOf<Float?>(null) }
+    val chapterIndex = BookMath.chapterIndex(book, state.trackIndex, state.positionMs)
+    val chapter = book.chapters.getOrNull(chapterIndex) ?: return
+    val elapsed = (state.positionMs - chapter.startMs).coerceIn(0, chapter.durationMs)
+    var dragPosition by remember(book.id, chapterIndex) { mutableStateOf<Float?>(null) }
+    val shownElapsed = (dragPosition?.toLong() ?: elapsed).coerceIn(0, chapter.durationMs)
+    fun seekChapter(target: BookChapter, elapsedMs: Long = 0) {
+        seek(BookMath.absolute(book, book.tracks[target.trackIndex].uri, target.startMs + elapsedMs))
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Cover(book, Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio(1f))
         Text(book.title, Modifier.padding(top = 22.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (book.author.isNotBlank()) Text(book.author, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("FILE ${state.trackIndex + 1} OF ${book.tracks.size} · ${track.name.substringBeforeLast('.')}", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, letterSpacing = 1.sp)
-        Slider(value = dragPosition ?: absolute.toFloat(), onValueChange = { dragPosition = it }, valueRange = 0f..book.durationMs.coerceAtLeast(1).toFloat(), onValueChangeFinished = { dragPosition?.let { seek(it.toLong()) }; dragPosition = null }, modifier = Modifier.fillMaxWidth())
+        Text("CHAPTER ${chapterIndex + 1} OF ${book.chapters.size}", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+        Text(chapter.title, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Slider(value = dragPosition ?: elapsed.toFloat(), onValueChange = { dragPosition = it }, valueRange = 0f..chapter.durationMs.coerceAtLeast(1).toFloat(), onValueChangeFinished = { dragPosition?.let { seekChapter(chapter, it.toLong()) }; dragPosition = null }, modifier = Modifier.fillMaxWidth())
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(BookMath.time((dragPosition ?: absolute.toFloat()).toLong()), style = MaterialTheme.typography.labelMedium)
-            Text("${BookMath.remaining(book.durationMs - absolute, state.speed)} left at ${state.speed}×", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(BookMath.time(shownElapsed), style = MaterialTheme.typography.labelMedium)
+            Text("${BookMath.time(BookMath.chapterRemaining(chapter, chapter.startMs + shownElapsed, state.speed))} left in chapter", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        Text("${BookMath.remaining(book.durationMs - absolute, state.speed)} left in book · ${state.speed}×", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = previous, enabled = state.trackIndex > 0) { Icon(Icons.Rounded.SkipPrevious, "Previous file") }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = { seekChapter(book.chapters[chapterIndex - 1]) }, enabled = chapterIndex > 0) { Icon(Icons.Rounded.SkipPrevious, "Previous chapter") }
+                Text("Previous", style = MaterialTheme.typography.labelSmall)
+            }
             IconButton(onClick = { skip(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
             FilledIconButton(onClick = toggle, modifier = Modifier.size(76.dp), shape = CircleShape) { Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(42.dp)) }
             IconButton(onClick = { skip(30_000) }) { Icon(Icons.Rounded.Forward30, "Forward 30 seconds", Modifier.size(32.dp)) }
-            IconButton(onClick = next, enabled = state.trackIndex < book.tracks.lastIndex) { Icon(Icons.Rounded.SkipNext, "Next file") }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = { seekChapter(book.chapters[chapterIndex + 1]) }, enabled = chapterIndex < book.chapters.lastIndex) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
+                Text("Next", style = MaterialTheme.typography.labelSmall)
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { action("Speed") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.speed}× speed") }

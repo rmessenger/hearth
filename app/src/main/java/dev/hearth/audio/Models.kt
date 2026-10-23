@@ -5,7 +5,19 @@ import java.util.Locale
 data class Chapter(val title: String, val startMs: Long)
 data class Track(val uri: String, val name: String, val durationMs: Long, val size: Long = 0, val modified: Long = 0, val chapters: List<Chapter> = emptyList())
 data class Book(val id: String, val title: String, val author: String, val tracks: List<Track>, val cover: String? = null) {
-    val durationMs: Long get() = tracks.sumOf { it.durationMs }
+    val durationMs: Long = tracks.sumOf { it.durationMs }
+    val chapters: List<BookChapter> = tracks.flatMapIndexed { index, track ->
+        val embedded = track.chapters.filter { it.startMs >= 0 && it.startMs < track.durationMs }
+            .sortedBy { it.startMs }.distinctBy { it.startMs }
+        val starts = if (embedded.firstOrNull()?.startMs == 0L) embedded
+            else listOf(Chapter(track.name.substringBeforeLast('.'), 0)) + embedded
+        starts.mapIndexed { chapterIndex, chapter ->
+            BookChapter(chapter.title, index, chapter.startMs, starts.getOrNull(chapterIndex + 1)?.startMs ?: track.durationMs)
+        }
+    }
+}
+data class BookChapter(val title: String, val trackIndex: Int, val startMs: Long, val endMs: Long) {
+    val durationMs: Long get() = endMs - startMs
 }
 data class Mark(val id: String, val trackUri: String, val positionMs: Long, val note: String, val created: Long)
 data class BookmarkTarget(val bookId: String, val trackUri: String, val positionMs: Long)
@@ -44,6 +56,10 @@ object BookMath {
         }
         return 0 to 0L
     }
+    fun chapterIndex(book: Book, trackIndex: Int, positionMs: Long): Int =
+        book.chapters.indexOfLast { it.trackIndex < trackIndex || (it.trackIndex == trackIndex && it.startMs <= positionMs.coerceAtLeast(0)) }
+    fun chapterRemaining(chapter: BookChapter, positionMs: Long, speed: Float): Long =
+        ((chapter.endMs - positionMs.coerceIn(chapter.startMs, chapter.endMs)) / speed.coerceAtLeast(0.1f)).toLong()
     fun time(ms: Long): String {
         val seconds = ms.coerceAtLeast(0) / 1000
         return if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)

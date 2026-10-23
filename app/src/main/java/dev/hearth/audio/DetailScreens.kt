@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -51,15 +52,17 @@ fun SettingsScreen(repo: LibraryRepository, theme: String, setTheme: (String) ->
 }
 
 @Composable
-fun NotesScreen(screen: String, book: Book, progress: BookProgress, repo: LibraryRepository, seek: (Int, Long) -> Unit, dialog: (String) -> Unit) {
+fun NotesScreen(screen: String, book: Book, progress: BookProgress, playback: PlaybackState, repo: LibraryRepository, seek: (Int, Long) -> Unit, dialog: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(book.title, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif) }
         when (screen) {
-            "Chapters" -> book.tracks.forEachIndexed { index, track ->
-                item { ListItem(headlineContent = { Text(track.name) }, supportingContent = { Text("File ${index + 1} · ${BookMath.time(track.durationMs)}") }, trailingContent = { IconButton(onClick = { seek(index, 0) }) { Icon(Icons.Rounded.PlayArrow, "Go to file ${index + 1}") } }) }
-                items(track.chapters) { chapter ->
-                    ListItem(headlineContent = { Text(chapter.title) }, supportingContent = { Text(BookMath.time(chapter.startMs)) }, trailingContent = { IconButton(onClick = { seek(index, chapter.startMs) }) { Icon(Icons.Rounded.PlayArrow, "Go to ${chapter.title}") } })
-                }
+            "Chapters" -> items(book.chapters.size) { index ->
+                val chapter = book.chapters[index]
+                val current = index == BookMath.chapterIndex(book, playback.trackIndex, playback.positionMs)
+                ListItem(headlineContent = { Text(chapter.title, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal) },
+                    supportingContent = { Text("${if (current) "Current chapter · " else ""}${index + 1} of ${book.chapters.size} · ${BookMath.time(chapter.durationMs)}") },
+                    colors = ListItemDefaults.colors(containerColor = if (current) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
+                    trailingContent = { IconButton(onClick = { seek(chapter.trackIndex, chapter.startMs) }) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Go to ${chapter.title}") } })
             }
             "Characters" -> {
                 item { Button(onClick = { dialog("Add character") }) { Icon(Icons.Rounded.Add, null); Text("Add character") } }

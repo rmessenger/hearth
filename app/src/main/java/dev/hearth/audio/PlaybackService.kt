@@ -143,7 +143,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                 OPEN -> {
                     val book = repo.state.value.books.firstOrNull { it.id == args.getString("book") }
                         ?: return Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
-                    openBook(book, args.getBoolean("play", true))
+                    openBook(book, args.getBoolean("play", false))
                 }
                 SLEEP -> {
                     sleepDuration = args.getLong("minutes") * 60_000

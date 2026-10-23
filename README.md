@@ -6,6 +6,8 @@ An offline audiobook player for Android 13 and newer, written in Kotlin and Jetp
 
 Install the signed APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account or network permission is required.
 
+Opening a book restores its position without starting playback; tap Play when ready. Returning to a book that is already playing keeps playback running.
+
 The library refreshes on return to the app and checks for changes while open. There is no reload button. Keep original files in the selected folder; Hearth reads them in place.
 
 ## Included
@@ -13,7 +15,8 @@ The library refreshes on return to the app and checks for changes while open. Th
 - MP3, M4B/M4A, AAC, Ogg/Opus, FLAC, and WAV playback through Media3, subject to device codec support.
 - Background playback, system media controls, headset buttons, audio-focus handling, and pause on headset disconnection.
 - Independent saved positions and playback speeds for each book; natural file ordering and cross-file seeking.
-- Embedded M4B chapters, supporting Nero chapter lists and QuickTime text chapter tracks.
+- Embedded M4B chapters, supporting Nero chapter lists and QuickTime text chapter tracks. Previous/Next navigate chapters across files; files without chapter markers act as individual chapters.
+- Current chapter title, chapter scrubber, speed-adjusted chapter time remaining, overall book time remaining, and current-chapter highlighting in the chapter list. The separate 10-second back and 30-second forward controls skip by time.
 - Playback speed from 0.5× to 3×, silence skipping, configurable resume rewind, equalizer presets, and volume boost.
 - Sleep countdown with fade-out, end-of-file stop, and optional shake to reset/resume.
 - Bookmarks, position history, character notes, listening totals, and New/Started/Finished classification.

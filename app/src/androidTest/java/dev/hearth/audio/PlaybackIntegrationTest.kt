@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
@@ -73,7 +75,7 @@ class PlaybackIntegrationTest {
         onMain { controller.setPlaybackSpeed(1.5f); controller.seekTo(0, 10_000); controller.play() }
         withTimeout(10_000) { PlaybackService.state.first { it.playing && it.bookId == book.id } }
         device.pressHome()
-        delay(1500)
+        withTimeout(15_000) { PlaybackService.state.first { it.playing && it.positionMs > 11_000 } }
         assertTrue(PlaybackService.state.value.playing)
         device.executeShellCommand("input keyevent 127")
         withTimeout(5000) { PlaybackService.state.first { !it.playing } }
@@ -112,6 +114,62 @@ class PlaybackIntegrationTest {
             val children = childrenFuture.get(5, TimeUnit.SECONDS)
             assertTrue(children.value!!.any { it.mediaId == book.id })
         } finally { onMain { browser.release() } }
+    }
+    @Test fun openingABookFromTheLibraryWaitsForAnExplicitPlay() = runBlocking {
+        device.wait(Until.findObject(By.clazz("android.widget.EditText")), 5000).text = name
+        device.wait(Until.findObject(By.text(name)), 5000).click()
+        withTimeout(5000) { PlaybackService.state.first { it.bookId == book.id } }
+        assertTrue(device.wait(Until.hasObject(By.desc("Play")), 5000))
+        delay(1200)
+        assertFalse(PlaybackService.state.value.playing)
+        assertFalse(onMain { controller.playWhenReady })
+        assertTrue(device.hasObject(By.text("CHAPTER 1 OF 2")))
+        clickPlayerControl("Next chapter")
+        withTimeout(5000) { PlaybackService.state.first { it.trackIndex == 1 } }
+        assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 2 OF 2")), 5000))
+        clickPlayerControl("Previous chapter")
+        withTimeout(5000) { PlaybackService.state.first { it.trackIndex == 0 } }
+        assertFalse(onMain { controller.playWhenReady })
+    }
+    @Test fun embeddedChaptersNavigateWhilePausedAndShowCurrentProgress() = runBlocking {
+        val chapterName = "$name-Chapters"
+        val chapterDirectory = "$directory/$chapterName"
+        device.executeShellCommand("mkdir -p $chapterDirectory")
+        assertEquals("", device.executeShellCommand("cp /sdcard/hearth-test-chapters.m4b $chapterDirectory/story.m4b"))
+        val library = withTimeout(25_000) { repo.state.first { state -> state.books.any { it.title == chapterName } } }
+        val chapterBook = library.books.first { it.title == chapterName }
+        assertEquals(listOf("The Beginning", "The Journey", "The Homecoming"), chapterBook.chapters.map { it.title })
+        device.wait(Until.findObject(By.clazz("android.widget.EditText")), 5000).text = chapterName
+        device.wait(Until.findObject(By.text(chapterName)), 5000).click()
+        withTimeout(5000) { PlaybackService.state.first { it.bookId == chapterBook.id } }
+        assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 1 OF 3")), 5000))
+        clickPlayerControl("Next chapter")
+        withTimeout(5000) { PlaybackService.state.first { it.positionMs == 40_000L } }
+        assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 2 OF 3")), 5000))
+        assertTrue(device.hasObject(By.text("The Journey")))
+        assertTrue(device.hasObject(By.text("0:40 left in chapter")))
+        assertFalse(onMain { controller.playWhenReady })
+        onMain { controller.setPlaybackSpeed(2f); controller.seekTo(0, 50_000) }
+        assertTrue(device.wait(Until.hasObject(By.text("0:15 left in chapter")), 5000))
+        clickPlayerControl("Chapters")
+        assertTrue(device.wait(Until.hasObject(By.textStartsWith("Current chapter · 2 of 3")), 5000))
+        device.findObject(By.desc("Go to The Homecoming")).click()
+        assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 3 OF 3")), 5000))
+        assertEquals(80_000L, PlaybackService.state.value.positionMs)
+        clickPlayerControl("Next chapter")
+        assertEquals(80_000L, PlaybackService.state.value.positionMs)
+        clickPlayerControl("Previous chapter")
+        assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 2 OF 3")), 5000))
+        assertEquals(40_000L, PlaybackService.state.value.positionMs)
+        onMain { controller.play() }
+        withTimeout(5000) { PlaybackService.state.first { it.playing } }
+        clickPlayerControl("Next chapter")
+        withTimeout(5000) { PlaybackService.state.first { it.playing && it.positionMs >= 80_000 } }
+        assertTrue(onMain { controller.playWhenReady })
+    }
+    private fun clickPlayerControl(description: String) {
+        assertTrue(UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(description)))
+        device.wait(Until.findObject(By.desc(description)), 5000).click()
     }
     private suspend fun openBook() {
         command(PlaybackService.OPEN, Bundle().apply { putString("book", book.id); putBoolean("play", false) })

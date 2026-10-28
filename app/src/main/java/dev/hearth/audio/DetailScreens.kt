@@ -20,6 +20,8 @@ import java.util.Date
 
 @Composable
 fun SettingsScreen(repo: LibraryRepository, theme: String, setTheme: (String) -> Unit, folder: () -> Unit, effects: () -> Unit, statistics: () -> Unit) {
+    var showPrivacy by remember { mutableStateOf(false) }
+    if (showPrivacy) PrivacyPolicyDialog { showPrivacy = false }
     var rewind by remember { mutableIntStateOf(repo.preferences.getInt("rewind", 5)) }
     var shake by remember { mutableStateOf(repo.preferences.getBoolean("shake", true)) }
     var skipSilence by remember { mutableStateOf(repo.preferences.getBoolean("skipSilence", false)) }
@@ -41,7 +43,8 @@ fun SettingsScreen(repo: LibraryRepository, theme: String, setTheme: (String) ->
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("System", "Light", "Dark").forEach { label -> FilterChip(theme == label, { setTheme(label) }, { Text(label) }) } }
         HorizontalDivider()
         Text("Hearth", fontFamily = FontFamily.Serif, style = MaterialTheme.typography.headlineMedium)
-        Text("A quiet place for your audiobooks.\nVersion 0.1.0 · Android 13+\nNo account, ads, or subscriptions.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("A quiet place for your audiobooks.\nVersion ${BuildConfig.VERSION_NAME}\nNo account, ads, or subscriptions.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = { showPrivacy = true }) { Text("Privacy policy") }
         Text("Audio files stay in your chosen folder. Listening progress, bookmarks, and notes are stored on this device and are removed if Hearth is uninstalled.", style = MaterialTheme.typography.bodySmall)
     }
 }

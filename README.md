@@ -1,8 +1,10 @@
 # Hearth
 
-An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Inspired by the useful listening workflows in Smart AudioBook Player, with an original name, icon, and interface.
+An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Organize your library, follow chapter progress, and pick up where you left off.
 
 **Coming soon to Google Play.**
+
+[Privacy policy](https://rmessenger.github.io/hearth/privacy.html)
 
 ## Screenshots
 
@@ -31,7 +33,7 @@ The library refreshes on return to the app and checks for changes while open. Th
 - Bookmarks, position history, character notes, listening totals, and New/Started/Finished classification.
 - Search, sorting, list/grid layouts, light/dark themes, and a home-screen playback widget.
 
-This first version focuses on the offline player. Chromecast, audio conversion, online cover/description lookup, scheduled sleep timers, and the reference app's more specialized gestures are not implemented. Media-library integration is present, but Android Auto and physical Bluetooth/headset hardware have not been certified or road-tested. There is no DRM support.
+This first version focuses on the offline player. Chromecast, audio conversion, online cover/description lookup, and scheduled sleep timers are not implemented. Media-library integration is present, but Android Auto and physical Bluetooth/headset hardware have not been certified or road-tested. There is no DRM support.
 
 Progress is local to this installation. Uninstalling or clearing app data removes progress and notes; it does not remove the audiobook files. Cloud backup and device transfer are disabled because persisted storage grants are device-specific.
 
@@ -59,5 +61,3 @@ scripts/seed-test-library.sh
 ```
 
 The seed script needs `adb` and `ffmpeg` in PATH. Tests cover automatic addition/removal, natural ordering, cover detection, speed/position persistence, background playback, media pause, cross-file seeks/history, and end-of-file sleep. JVM tests cover timeline arithmetic and both M4B chapter formats. See [validation notes](docs/validation.md).
-
-[Reference exploration](docs/reference-behavior.md) distinguishes observed behavior from implementation choices. This project is independent of Smart AudioBook Player and its publisher.

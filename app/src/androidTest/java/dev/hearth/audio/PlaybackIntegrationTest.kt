@@ -9,8 +9,6 @@ import java.io.File
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
@@ -167,8 +165,10 @@ class PlaybackIntegrationTest {
         onMain { controller.setPlaybackSpeed(2f); controller.seekTo(0, 50_000) }
         assertTrue(device.wait(Until.hasObject(By.text("0:15 left in chapter")), 5000))
         clickPlayerControl("Chapters")
-        assertTrue(device.wait(Until.hasObject(By.textStartsWith("Current chapter · 2 of 3")), 5000))
-        device.findObject(By.desc("Go to The Homecoming")).click()
+        assertTrue(device.wait(Until.hasObject(By.textContains("Current chapter · 2 of 3")), 5000))
+        val chapterRow = device.findObject(By.desc("Go to The Homecoming"))
+        assertTrue(chapterRow.visibleBounds.width() > 200)
+        device.click(chapterRow.visibleBounds.left + 20, chapterRow.visibleBounds.centerY())
         assertTrue(device.wait(Until.hasObject(By.text("CHAPTER 3 OF 3")), 5000))
         assertEquals(80_000L, PlaybackService.state.value.positionMs)
         clickPlayerControl("Next chapter")
@@ -255,7 +255,6 @@ class PlaybackIntegrationTest {
         } finally { temporary.delete() }
     }
     private fun clickPlayerControl(description: String) {
-        assertTrue(UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(description)))
         device.wait(Until.findObject(By.desc(description)), 5000).click()
     }
     private suspend fun openBook() {

@@ -1,6 +1,10 @@
 package dev.hearth.audio
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,10 +66,11 @@ fun NotesScreen(screen: String, book: Book, progress: BookProgress, playback: Pl
             "Chapters" -> items(book.chapters.size) { index ->
                 val chapter = book.chapters[index]
                 val current = index == BookMath.chapterIndex(book, playback.trackIndex, playback.positionMs)
-                ListItem(headlineContent = { Text(chapter.title, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal) },
+                ListItem(modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { seek(chapter.trackIndex, chapter.startMs) }
+                    .semantics { contentDescription = "Go to ${chapter.title}" }, headlineContent = { Text(chapter.title, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal) },
                     supportingContent = { Text("${if (current) "Current chapter · " else ""}${index + 1} of ${book.chapters.size} · ${BookMath.time(chapter.durationMs)}") },
                     colors = ListItemDefaults.colors(containerColor = if (current) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
-                    trailingContent = { IconButton(onClick = { seek(chapter.trackIndex, chapter.startMs) }) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Go to ${chapter.title}") } })
+                    trailingContent = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) })
             }
             "Characters" -> {
                 item { Button(onClick = { dialog("Add character") }) { Icon(Icons.Rounded.Add, null); Text("Add character") } }

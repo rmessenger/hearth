@@ -32,11 +32,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -256,12 +258,12 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
 }
 
 @Composable
-private fun Cover(book: Book, modifier: Modifier) {
+private fun Cover(book: Book, modifier: Modifier, showTitle: Boolean = true) {
     Box(modifier.clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(listOf(Pine, Color(0xFF496557)))), contentAlignment = Alignment.Center) {
         if (book.cover != null) AsyncImage(book.cover, "Cover of ${book.title}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = Gold, modifier = Modifier.size(32.dp))
-            Text(book.title.take(50), Modifier.padding(top = 8.dp), color = Cream, fontFamily = FontFamily.Serif, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (showTitle) Text(book.title.take(50), Modifier.padding(top = 8.dp), color = Cream, fontFamily = FontFamily.Serif, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -277,7 +279,7 @@ private fun EmptyState(title: String, description: String, button: String, actio
 }
 
 @Composable
-private fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, action: (String) -> Unit) {
+internal fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, action: (String) -> Unit) {
     val track = book.tracks.getOrNull(state.trackIndex) ?: return
     val absolute = BookMath.absolute(book, track.uri, state.positionMs)
     val chapterIndex = BookMath.chapterIndex(book, state.trackIndex, state.positionMs)
@@ -288,46 +290,110 @@ private fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, s
     fun seekChapter(target: BookChapter, elapsedMs: Long = 0) {
         seek(BookMath.absolute(book, book.tracks[target.trackIndex].uri, target.startMs + elapsedMs))
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Cover(book, Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio(1f))
-        Text(book.title, Modifier.padding(top = 22.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (book.author.isNotBlank()) Text(book.author, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("CHAPTER ${chapterIndex + 1} OF ${book.chapters.size}", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
-        Text(chapter.title, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Slider(value = dragPosition ?: elapsed.toFloat(), onValueChange = { dragPosition = it }, valueRange = 0f..chapter.durationMs.coerceAtLeast(1).toFloat(), onValueChangeFinished = { dragPosition?.let { seekChapter(chapter, it.toLong()) }; dragPosition = null }, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(BookMath.time(shownElapsed), style = MaterialTheme.typography.labelMedium)
-            Text("${BookMath.time(BookMath.chapterRemaining(chapter, chapter.startMs + shownElapsed, state.speed))} left in chapter", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text("${BookMath.remaining(book.durationMs - absolute, state.speed)} left in book · ${state.speed}×", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { seekChapter(book.chapters[chapterIndex - 1]) }, enabled = chapterIndex > 0) { Icon(Icons.Rounded.SkipPrevious, "Previous chapter") }
-                Text("Previous", style = MaterialTheme.typography.labelSmall)
+    var showError by remember(state.error) { mutableStateOf(state.error != null) }
+    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        val compact = maxHeight < 520.dp * LocalDensity.current.fontScale || maxWidth < 340.dp
+        val landscape = maxWidth >= 600.dp && maxWidth > maxHeight
+        val tight = maxHeight < 300.dp * LocalDensity.current.fontScale
+        val controls: @Composable () -> Unit = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (!compact) Text("CHAPTER ${chapterIndex + 1} OF ${book.chapters.size}",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                Text(if (compact) "${chapterIndex + 1}/${book.chapters.size} · ${chapter.title}" else chapter.title,
+                    Modifier.padding(top = if (tight) 0.dp else 4.dp), style = if (tight) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
+                    maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                Slider(value = dragPosition ?: elapsed.toFloat(), onValueChange = { dragPosition = it },
+                    valueRange = 0f..chapter.durationMs.coerceAtLeast(1).toFloat(),
+                    onValueChangeFinished = { dragPosition?.let { seekChapter(chapter, it.toLong()) }; dragPosition = null },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Chapter progress" })
+                val remaining = BookMath.time(BookMath.chapterRemaining(chapter, chapter.startMs + shownElapsed, state.speed))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(BookMath.time(shownElapsed), style = MaterialTheme.typography.labelMedium)
+                    Text(if (compact) "−$remaining" else "$remaining left in chapter",
+                        Modifier.semantics { contentDescription = "$remaining left in chapter" },
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (!compact) Text("${BookMath.remaining(book.durationMs - absolute, state.speed)} left in book · ${state.speed}×",
+                    Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().padding(vertical = if (tight) 2.dp else if (compact) 4.dp else 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { seekChapter(book.chapters[chapterIndex - 1]) }, enabled = chapterIndex > 0) { Icon(Icons.Rounded.SkipPrevious, "Previous chapter") }
+                    IconButton(onClick = { skip(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
+                    FilledIconButton(onClick = toggle, modifier = Modifier.size(if (tight) 48.dp else if (compact) 56.dp else 72.dp), shape = CircleShape) {
+                        Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(36.dp))
+                    }
+                    IconButton(onClick = { skip(30_000) }) { Icon(Icons.Rounded.Forward30, "Forward 30 seconds", Modifier.size(32.dp)) }
+                    IconButton(onClick = { seekChapter(book.chapters[chapterIndex + 1]) }, enabled = chapterIndex < book.chapters.lastIndex) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
+                }
+                PlayerTools(state, compact, action)
             }
-            IconButton(onClick = { skip(-10_000) }) { Icon(Icons.Rounded.Replay10, "Back 10 seconds", Modifier.size(32.dp)) }
-            FilledIconButton(onClick = toggle, modifier = Modifier.size(76.dp), shape = CircleShape) { Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(42.dp)) }
-            IconButton(onClick = { skip(30_000) }) { Icon(Icons.Rounded.Forward30, "Forward 30 seconds", Modifier.size(32.dp)) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { seekChapter(book.chapters[chapterIndex + 1]) }, enabled = chapterIndex < book.chapters.lastIndex) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
-                Text("Next", style = MaterialTheme.typography.labelSmall)
+        }
+        if (landscape) Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            PlayerBookHeader(book, Modifier.weight(0.36f).fillMaxHeight())
+            Spacer(Modifier.width(24.dp))
+            Column(Modifier.weight(0.64f).fillMaxHeight(), verticalArrangement = Arrangement.Center) { controls() }
+        } else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            PlayerBookHeader(book, Modifier.weight(1f).fillMaxWidth())
+            controls()
+        }
+    }
+    if (showError && state.error != null) AlertDialog(onDismissRequest = { showError = false },
+        title = { Text("Playback issue") }, text = { Text(state.error) },
+        confirmButton = { TextButton(onClick = { showError = false }) { Text("Close") } })
+}
+
+@Composable
+private fun PlayerBookHeader(book: Book, modifier: Modifier) {
+    BoxWithConstraints(modifier) {
+        val short = maxHeight < 120.dp * LocalDensity.current.fontScale
+        val singleLine = maxHeight < 80.dp * LocalDensity.current.fontScale
+        Column(Modifier.fillMaxSize().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+                val size = minOf(maxHeight, maxWidth, 280.dp)
+                if (size >= 64.dp) Cover(book, Modifier.size(size), showTitle = size >= 160.dp)
             }
+            Text(book.title, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif,
+                maxLines = if (singleLine) 1 else 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            if (!short && book.author.isNotBlank()) Text(book.author, Modifier.padding(top = 4.dp),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = { action("Speed") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.speed}× speed") }
-            OutlinedButton(onClick = { action("Sleep timer") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Bedtime, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(if (state.endOfTrack) "End of file" else if (state.sleepRemainingMs > 0) BookMath.time(state.sleepRemainingMs) else "Sleep timer") }
-        }
-        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            ActionIcon("Add bookmark", Icons.Rounded.BookmarkAdd, action)
-            ActionIcon("Chapters", Icons.AutoMirrored.Rounded.QueueMusic, action)
-            ActionIcon("Sound", Icons.Rounded.Tune, action)
-        }
-        HorizontalDivider()
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { listOf("Bookmarks", "History", "Characters").forEach { TextButton(onClick = { action(it) }) { Text(it, fontSize = 12.sp) } } }
-        if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 12.dp))
     }
 }
 
-@Composable private fun ActionIcon(label: String, icon: ImageVector, action: (String) -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) { IconButton(onClick = { action(label) }) { Icon(icon, label) }; Text(label, style = MaterialTheme.typography.labelSmall) }
+@Composable
+private fun PlayerTools(state: PlaybackState, compact: Boolean, action: (String) -> Unit) {
+    var more by remember { mutableStateOf(false) }
+    val timer = if (state.endOfTrack) "End of file" else if (state.sleepRemainingMs > 0) BookMath.time(state.sleepRemainingMs) else "Sleep timer"
+    Column(Modifier.fillMaxWidth()) {
+        if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { action("Speed") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.speed}× speed", maxLines = 1) }
+            OutlinedButton(onClick = { action("Sleep timer") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Bedtime, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(timer, maxLines = 1) }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = if (compact) 0.dp else 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            if (compact) {
+                IconButton(onClick = { action("Speed") }, modifier = Modifier.width(72.dp).semantics { contentDescription = "Playback speed" }) { Text("${state.speed.toString().removeSuffix(".0")}×", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                IconButton(onClick = { action("Sleep timer") }) { Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = if (state.sleepRemainingMs > 0 || state.endOfTrack) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
+                IconButton(onClick = { action("Chapters") }) { Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Chapters") }
+            } else {
+                ActionIcon("Bookmark", "Add bookmark", Icons.Rounded.BookmarkAdd, action)
+                ActionIcon("Chapters", "Chapters", Icons.AutoMirrored.Rounded.QueueMusic, action)
+                ActionIcon("Sound", "Sound", Icons.Rounded.Tune, action)
+            }
+            Box {
+                if (compact) IconButton(onClick = { more = true }) { Icon(Icons.Rounded.MoreHoriz, "More playback options") }
+                else ActionIcon("More", "More playback options", Icons.Rounded.MoreHoriz) { more = true }
+                DropdownMenu(more, { more = false }) {
+                    val options = if (compact) listOf("Add bookmark", "Sound", "Bookmarks", "History", "Characters") else listOf("Bookmarks", "History", "Characters")
+                    options.forEach { name -> DropdownMenuItem(text = { Text(name) }, onClick = { more = false; action(name) }) }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun ActionIcon(label: String, description: String, icon: ImageVector, action: (String) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = { action(description) }) { Icon(icon, description) }
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
 }

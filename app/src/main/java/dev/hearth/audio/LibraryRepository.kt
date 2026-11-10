@@ -84,7 +84,8 @@ class LibraryRepository(private val context: Context) {
                     else -> null
                 }
             }.toSet()
-            val result = withContext(Dispatchers.IO) { scanTree(rootUri, previous, checked) }
+            val metadataCurrent = preferences.getInt("metadataVersion", 0) == METADATA_VERSION
+            val result = withContext(Dispatchers.IO) { scanTree(rootUri, if (metadataCurrent) previous else emptyList(), checked) }
             if (root != rootUri) return
             result.positions.forEach { (id, imported) ->
                 if (!preferences.contains("progress:$id") && !preferences.contains("positionChecked:$id")) {
@@ -94,6 +95,7 @@ class LibraryRepository(private val context: Context) {
             }
             val books = result.books
             if (books != previous) preferences.edit().putString("catalog", encodeBooks(books).toString()).apply()
+            preferences.edit().putInt("metadataVersion", METADATA_VERSION).apply()
             mutableLibrary.value = LibraryState(books, scannedAt = System.currentTimeMillis())
         } catch (error: SecurityException) {
             mutableLibrary.value = mutableLibrary.value.copy(scanning = false, error = "Folder access expired. Choose your audiobook folder again in Settings.")
@@ -189,7 +191,10 @@ class LibraryRepository(private val context: Context) {
         if (file.name.orEmpty().substringAfterLast('.').lowercase() in setOf("m4b", "m4a", "mp4")) {
             try {
                 context.contentResolver.openFileDescriptor(file.uri, "r")?.use { descriptor ->
-                    FileInputStream(descriptor.fileDescriptor).channel.use { chapters = Mp4Chapters.read(it) }
+                    FileInputStream(descriptor.fileDescriptor).channel.use { channel ->
+                        if (duration <= 0) duration = Mp4Chapters.readDuration(channel)
+                        chapters = Mp4Chapters.read(channel)
+                    }
                 }
             } catch (_: IOException) { /* Non-seekable providers still play as one file. */ }
             catch (_: java.nio.BufferUnderflowException) { chapters = emptyList() }
@@ -201,6 +206,7 @@ class LibraryRepository(private val context: Context) {
         key.removePrefix("progress:") to decodeProgress(JSONObject(preferences.getString(key, "{}")!!))
     }
     companion object {
+        private const val METADATA_VERSION = 1
         val AUDIO_EXTENSIONS = setOf("mp3", "m4b", "m4a", "aac", "ogg", "opus", "flac", "wav", "mp4")
         fun encodeBooks(books: List<Book>): JSONArray = JSONArray().apply {
             books.forEach { book -> put(JSONObject().put("id", book.id).put("title", book.title).put("author", book.author).put("cover", book.cover)

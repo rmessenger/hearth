@@ -3,6 +3,9 @@ package dev.hearth.audio
 
 import android.content.ComponentName
 import android.os.Bundle
+import android.net.Uri
+import android.provider.DocumentsContract
+import java.io.File
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -60,6 +63,7 @@ class PlaybackIntegrationTest {
     @After fun cleanUpTestBook() {
         onMain { connectedController?.let { it.pause(); it.stop(); it.release() }; repo.preferences.edit().putInt("rewind", 5).apply() }
         device.executeShellCommand("rm -rf $directory")
+        device.executeShellCommand("rm -rf /sdcard/$name-imported")
         scenario?.close()
     }
     @Test fun autoRefreshDiscoversTracksAndCoverAndRemovesDeletedBook() = runBlocking {
@@ -205,6 +209,50 @@ class PlaybackIntegrationTest {
         val nextFile = withTimeout(5000) { PlaybackService.state.first { it.playing } }
         assertEquals("Resume should preserve the selected file", 1, nextFile.trackIndex)
         assertTrue(nextFile.positionMs < 2000)
+    }
+    @Test fun discoversSavedPositionOnceAndKeepsHearthProgressOnLaterScans() = runBlocking {
+        val importedName = "$name-imported"
+        val staging = "/sdcard/$importedName"
+        val importedDirectory = "$directory/$importedName"
+        val backup = positionBackupFixture()
+        device.executeShellCommand("mkdir -p $staging")
+        device.executeShellCommand("cp /sdcard/hearth-test.mp3 $staging/chapter2.mp3")
+        device.executeShellCommand("cp /sdcard/hearth-test.mp3 $staging/chapter10.mp3")
+        writeBackup("$staging/position.sabp.dat", backup)
+        device.executeShellCommand("mv $staging $importedDirectory")
+        val library = withTimeout(25_000) { repo.state.first { state -> state.books.any { it.title == importedName } } }
+        val imported = library.books.first { it.title == importedName }
+        val progress = repo.getProgress(imported.id)
+        assertEquals(imported.tracks[1].uri, progress.trackUri)
+        assertEquals(65_000L, progress.positionMs)
+        assertEquals("Started", progress.status)
+        val backupUri = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(imported.id), DocumentsContract.getDocumentId(Uri.parse(imported.id)) + "/position.sabp.dat")
+        assertArrayEquals(backup, context.contentResolver.openInputStream(backupUri)!!.use { it.readBytes() })
+        command(PlaybackService.OPEN, Bundle().apply { putString("book", imported.id) })
+        val opened = withTimeout(5000) { PlaybackService.state.first { it.bookId == imported.id } }
+        assertEquals(1, opened.trackIndex)
+        assertEquals(65_000L, opened.positionMs)
+        assertFalse(opened.playing)
+        onMain { controller.seekTo(1, 85_000) }
+        withTimeout(5000) { PlaybackService.state.first { it.positionMs == 85_000L } }
+        writeBackup("$importedDirectory/position.sabp.dat", positionBackupFixture(seconds = 95))
+        repo.scan()
+        assertEquals(85_000L, repo.getProgress(imported.id).positionMs)
+        assertEquals(85_000L, LibraryRepository(context).getProgress(imported.id).positionMs)
+    }
+    @Test fun ignoresPositionFilesAddedAfterFirstDiscovery() = runBlocking {
+        val backup = positionBackupFixture()
+        writeBackup("$directory/position.sabp.dat", backup)
+        repo.scan()
+        assertEquals(BookProgress(), repo.getProgress(book.id))
+    }
+    private fun writeBackup(destination: String, bytes: ByteArray) {
+        val temporary = File(context.getExternalFilesDir(null), "$name.dat")
+        try {
+            temporary.writeBytes(bytes)
+            assertEquals("", device.executeShellCommand("cp ${temporary.absolutePath} $destination"))
+            assertEquals(bytes.size.toString(), device.executeShellCommand("stat -c %s $destination").trim())
+        } finally { temporary.delete() }
     }
     private fun clickPlayerControl(description: String) {
         assertTrue(UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(description)))

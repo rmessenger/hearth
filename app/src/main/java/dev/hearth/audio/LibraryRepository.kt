@@ -77,7 +77,22 @@ class LibraryRepository(private val context: Context) {
         try {
             mutableLibrary.value = mutableLibrary.value.copy(scanning = true)
             val previous = mutableLibrary.value.books
-            val books = withContext(Dispatchers.IO) { scanTree(rootUri, previous) }
+            val checked = preferences.all.keys.mapNotNull { key ->
+                when {
+                    key.startsWith("progress:") -> key.removePrefix("progress:")
+                    key.startsWith("positionChecked:") -> key.removePrefix("positionChecked:")
+                    else -> null
+                }
+            }.toSet()
+            val result = withContext(Dispatchers.IO) { scanTree(rootUri, previous, checked) }
+            if (root != rootUri) return
+            result.positions.forEach { (id, imported) ->
+                if (!preferences.contains("progress:$id") && !preferences.contains("positionChecked:$id")) {
+                    if (imported != null) updateProgress(id) { imported }
+                    preferences.edit().putBoolean("positionChecked:$id", true).apply()
+                }
+            }
+            val books = result.books
             if (books != previous) preferences.edit().putString("catalog", encodeBooks(books).toString()).apply()
             mutableLibrary.value = LibraryState(books, scannedAt = System.currentTimeMillis())
         } catch (error: SecurityException) {
@@ -94,11 +109,13 @@ class LibraryRepository(private val context: Context) {
         fun length(): Long = size
         fun lastModified(): Long = modified
     }
-    private suspend fun scanTree(uri: Uri, previous: List<Book>): List<Book> {
+    private data class ScanResult(val books: List<Book>, val positions: Map<String, BookProgress?>)
+    private suspend fun scanTree(uri: Uri, previous: List<Book>, checked: Set<String>): ScanResult {
         val tree = DocumentFile.fromTreeUri(context, uri) ?: throw IOException("Folder unavailable")
         if (!tree.exists()) throw IOException("Folder unavailable")
         val oldTracks = previous.flatMap { it.tracks }.associateBy { it.uri }
         val books = mutableListOf<Book>()
+        val positions = mutableMapOf<String, BookProgress?>()
         suspend fun walk(folder: Entry, depth: Int) {
             currentCoroutineContext().ensureActive()
             if (depth > 32) throw IOException("Folders are nested too deeply")
@@ -132,11 +149,19 @@ class LibraryRepository(private val context: Context) {
                     } catch (_: IllegalArgumentException) { /* Unsupported metadata; the audio can still be playable. */ }
                 }
                 books += Book(id, folder.name ?: "Untitled audiobook", author, tracks, cover)
+                if (id !in checked) {
+                    positions[id] = files.firstOrNull { it.name == LegacyPositionReader.FILE_NAME }?.let { backup ->
+                        try {
+                            context.contentResolver.openInputStream(backup.uri)?.use { LegacyPositionReader.read(it, tracks) }
+                        } catch (_: IOException) { null }
+                        catch (_: SecurityException) { null }
+                    }
+                }
             }
             files.filter { it.isDirectory }.forEach { walk(it, depth + 1) }
         }
         walk(Entry(tree.uri, tree.name, DocumentsContract.Document.MIME_TYPE_DIR, 0, 0), 0)
-        return books.sortedWith { a, b -> BookMath.naturalOrder.compare(a.title, b.title) }
+        return ScanResult(books.sortedWith { a, b -> BookMath.naturalOrder.compare(a.title, b.title) }, positions)
     }
     private fun children(parent: Uri): List<Entry> {
         val childUri = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))

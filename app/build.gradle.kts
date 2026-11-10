@@ -22,6 +22,8 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
+    sourceSets.getByName("test").java.srcDir("src/testSupport/java")
+    sourceSets.getByName("androidTest").java.srcDir("src/testSupport/java")
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

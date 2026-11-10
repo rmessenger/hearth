@@ -14,11 +14,11 @@ fun PrivacyPolicyDialog(dismiss: () -> Unit) {
     AlertDialog(onDismissRequest = dismiss, title = { Text("Privacy policy") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Privacy policy for Hearth", style = MaterialTheme.typography.titleSmall)
-            Text("Effective October 27, 2026. Hearth is an offline audiobook player developed by Robin Messenger.")
+            Text("Effective November 10, 2026. Hearth is an offline audiobook player developed by Robin Messenger.")
             Text("Your data stays on your device", style = MaterialTheme.typography.titleSmall)
             Text("Hearth does not collect or transmit your personal data. It has no account system, ads, analytics, tracking, or developer-operated servers. The app does not request internet access.")
             Text("Audiobooks and folder access", style = MaterialTheme.typography.titleSmall)
-            Text("You choose a folder using Android\u2019s system folder picker. Hearth reads audio files, cover images, file names, and embedded metadata in that folder to display your library and play your audiobooks. These files are not uploaded to the developer. Hearth does not delete or modify your original audiobook files.")
+            Text("You choose a folder using Android\u2019s system folder picker. Hearth reads audio files, cover images, file names, embedded metadata, and existing playback-position files in that folder to display your library and play your audiobooks. These files are not uploaded to the developer. Hearth does not delete or modify your original audiobook files.")
             Text("Local storage and device features", style = MaterialTheme.typography.titleSmall)
             Text("Hearth stores library information, playback positions, preferences, bookmarks, character notes, listening history, and listening totals in its private storage on your device. It uses background media playback and system media controls so audio can continue with the screen off. If you enable shake controls, motion sensor readings are used on the device to control the sleep timer; they are not retained or transmitted. Book titles and artwork may appear in Android\u2019s media controls and on connected playback devices.")
             Text("Retention and deletion", style = MaterialTheme.typography.titleSmall)

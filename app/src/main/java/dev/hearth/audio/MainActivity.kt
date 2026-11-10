@@ -36,6 +36,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -192,7 +196,17 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                 Text(library.error, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
-        if (!hasFolder || (library.books.isEmpty() && !library.scanning)) {
+        if (hasFolder && library.scanning && library.books.isEmpty()) {
+            Column(Modifier.fillMaxSize().padding(32.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                CircularProgressIndicator(Modifier.size(48.dp), strokeWidth = 3.dp)
+                Text("Preparing your library", Modifier.padding(top = 24.dp),
+                    style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Serif, textAlign = TextAlign.Center)
+                Text("Finding audiobooks and reading their details. This may take a little while.",
+                    Modifier.padding(top = 12.dp).widthIn(max = 320.dp), textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else if (!hasFolder || (library.books.isEmpty() && !library.scanning)) {
             EmptyState(if (hasFolder) "Your next chapter awaits" else "Make yourself at home", if (hasFolder) "Add audiobook folders here and they’ll appear automatically. MP3, M4B, FLAC, and more." else "Choose the folder where your audiobooks live. Your stories and listening progress stay on this device.", if (hasFolder) "Change folder" else "Choose audiobook folder", chooseFolder)
         } else {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 24.dp), placeholder = { Text("Find a book or author") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp))

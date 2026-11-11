@@ -154,60 +154,63 @@ fun Hearth(repo: LibraryRepository) {
             dialog = name
         }
         BackHandler(screen != "Library") { screen = if (screen in listOf("Bookmarks", "Characters", "History", "Chapters")) "Player" else "Library" }
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbar) },
-            topBar = {
-                if (screen == "Library") Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.ic_hearth), null, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Pine))
-                    Text("hearth", Modifier.padding(start = 10.dp).weight(1f), fontFamily = FontFamily.Serif, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                    CastButton()
-                    IconButton(onClick = { screen = "Settings" }) { Icon(Icons.Rounded.Settings, "Settings") }
-                } else TopAppBar(title = {
-                    Column {
-                        Text(if (screen == "Player") { if (viewingActiveBook) "Now listening" else "Book details" } else screen, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (screen == "Player" && viewingActiveBook && playback.castDevice != null) Text("Casting to ${playback.castDevice}",
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }, navigationIcon = {
-                    IconButton(onClick = { screen = if (screen in listOf("Bookmarks", "Characters", "History", "Chapters")) "Player" else "Library" }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                }, actions = { if (screen == "Player" && viewingActiveBook) CastButton(); if (screen == "Player" && selectedBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
-            },
-            bottomBar = {
-                if ((screen != "Player" || !viewingActiveBook) && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
-                    Row(Modifier.fillMaxWidth().navigationBarsPadding().clickable { selectedId = currentBook.id; screen = "Player" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Cover(currentBook, Modifier.size(48.dp))
-                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                            Text(currentBook.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            Text("${BookMath.time(playback.positionMs)} · ${playback.speed}×", fontSize = 12.sp, color = Gold)
+        // Avoid a first frame measured with the previous screen’s bars.
+        key(screen) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
+                topBar = {
+                    if (screen == "Library") Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Image(painterResource(R.drawable.ic_hearth), null, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Pine))
+                        Text("hearth", Modifier.padding(start = 10.dp).weight(1f), fontFamily = FontFamily.Serif, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        CastButton()
+                        IconButton(onClick = { screen = "Settings" }) { Icon(Icons.Rounded.Settings, "Settings") }
+                    } else TopAppBar(title = {
+                        Column {
+                            Text(if (screen == "Player") { if (viewingActiveBook) "Now listening" else "Book details" } else screen, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (screen == "Player" && viewingActiveBook && playback.castDevice != null) Text("Casting to ${playback.castDevice}",
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        IconButton(onClick = { if (playback.playing) controller?.pause() else controller?.play() }) { Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause current book" else "Play current book") }
+                    }, navigationIcon = {
+                        IconButton(onClick = { screen = if (screen in listOf("Bookmarks", "Characters", "History", "Chapters")) "Player" else "Library" }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+                    }, actions = { if (screen == "Player" && viewingActiveBook) CastButton(); if (screen == "Player" && selectedBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
+                },
+                bottomBar = {
+                    if ((screen != "Player" || !viewingActiveBook) && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
+                        Row(Modifier.fillMaxWidth().navigationBarsPadding().clickable { selectedId = currentBook.id; screen = "Player" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Cover(currentBook, Modifier.size(48.dp))
+                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(currentBook.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                Text("${BookMath.time(playback.positionMs)} · ${playback.speed}×", fontSize = 12.sp, color = Gold)
+                            }
+                            IconButton(onClick = { if (playback.playing) controller?.pause() else controller?.play() }) { Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause current book" else "Play current book") }
+                        }
                     }
                 }
-            }
-        ) { padding ->
-            Box(Modifier.padding(padding).fillMaxSize()) {
-                when (screen) {
-                    "Library" -> libraryViewState.SaveableStateProvider("Library") {
-                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> viewBook(book) }, { book -> selectedId = book.id; dialog = "Book options" },
-                            libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() })
+            ) { padding ->
+                Box(Modifier.padding(padding).fillMaxSize()) {
+                    when (screen) {
+                        "Library" -> libraryViewState.SaveableStateProvider("Library") {
+                            LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> viewBook(book) }, { book -> selectedId = book.id; dialog = "Book options" },
+                                libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() })
+                        }
+                        "Player" -> if (selectedBook != null) PlayerScreen(selectedBook, viewedPlayback,
+                            toggle = {
+                                if (viewingActiveBook) { if (playback.playing) controller?.pause() else controller?.play() }
+                                else command(PlaybackService.OPEN, Bundle().apply { putString("book", selectedBook.id); putBoolean("play", true) })
+                            },
+                            skip = { delta ->
+                                if (viewingActiveBook) command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) })
+                                else seekViewedBook(BookMath.absolute(selectedBook, viewedProgress.trackUri, viewedPlayback.positionMs) + delta)
+                            },
+                            seek = { seekViewedBook(it) },
+                            action = { name -> when (name) { "Speed", "Sleep timer", "Add bookmark", "Sound" -> showDialog(name); else -> screen = name } },
+                            browsing = !viewingActiveBook)
+                            else EmptyState("Choose your next story", "Open an audiobook from your library to start listening.", "Open library", { screen = "Library" })
+                        "Settings" -> SettingsScreen(repo, theme, { value -> theme = value; repo.preferences.edit().putString("theme", value).apply() }, { pickFolder.launch(repo.root) }, { command(PlaybackService.EFFECTS) }, { screen = "Listening statistics" })
+                        "Listening statistics" -> StatisticsScreen(library.books, progress)
+                        "Bookmarks", "History", "Characters", "Chapters" -> if (selectedBook != null) NotesScreen(screen, selectedBook, viewedProgress, viewedPlayback, repo,
+                            { index, position -> seekViewedBook(index, position); screen = "Player" }, { showDialog(it) })
                     }
-                    "Player" -> if (selectedBook != null) PlayerScreen(selectedBook, viewedPlayback,
-                        toggle = {
-                            if (viewingActiveBook) { if (playback.playing) controller?.pause() else controller?.play() }
-                            else command(PlaybackService.OPEN, Bundle().apply { putString("book", selectedBook.id); putBoolean("play", true) })
-                        },
-                        skip = { delta ->
-                            if (viewingActiveBook) command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) })
-                            else seekViewedBook(BookMath.absolute(selectedBook, viewedProgress.trackUri, viewedPlayback.positionMs) + delta)
-                        },
-                        seek = { seekViewedBook(it) },
-                        action = { name -> when (name) { "Speed", "Sleep timer", "Add bookmark", "Sound" -> showDialog(name); else -> screen = name } },
-                        browsing = !viewingActiveBook)
-                        else EmptyState("Choose your next story", "Open an audiobook from your library to start listening.", "Open library", { screen = "Library" })
-                    "Settings" -> SettingsScreen(repo, theme, { value -> theme = value; repo.preferences.edit().putString("theme", value).apply() }, { pickFolder.launch(repo.root) }, { command(PlaybackService.EFFECTS) }, { screen = "Listening statistics" })
-                    "Listening statistics" -> StatisticsScreen(library.books, progress)
-                    "Bookmarks", "History", "Characters", "Chapters" -> if (selectedBook != null) NotesScreen(screen, selectedBook, viewedProgress, viewedPlayback, repo,
-                        { index, position -> seekViewedBook(index, position); screen = "Player" }, { showDialog(it) })
                 }
             }
         }

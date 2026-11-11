@@ -118,16 +118,38 @@ fun Hearth(repo: LibraryRepository) {
             }
         }
         fun command(action: String, args: Bundle = Bundle.EMPTY) { controller?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args) }
-        fun openBook(book: Book, play: Boolean) {
+        fun viewBook(book: Book) {
             selectedId = book.id
-            command(PlaybackService.OPEN, Bundle().apply { putString("book", book.id); putBoolean("play", play) })
             screen = "Player"
         }
         val currentBook = library.books.firstOrNull { it.id == playback.bookId }
         val selectedBook = library.books.firstOrNull { it.id == selectedId } ?: currentBook
+        val viewingActiveBook = selectedBook != null && selectedBook.id == currentBook?.id
+        val viewedProgress = progress[selectedBook?.id] ?: BookProgress()
+        val viewedPlayback = if (viewingActiveBook) playback else PlaybackState(
+            bookId = selectedBook?.id.orEmpty(),
+            trackIndex = selectedBook?.tracks?.indexOfFirst { it.uri == viewedProgress.trackUri }?.coerceAtLeast(0) ?: 0,
+            positionMs = viewedProgress.positionMs, speed = viewedProgress.speed)
+        fun seekViewedBook(index: Int, position: Long) {
+            val book = selectedBook ?: return
+            val track = book.tracks.getOrNull(index) ?: return
+            if (viewingActiveBook) controller?.seekTo(index, position)
+            else {
+                repo.history(book.id, book.tracks[viewedPlayback.trackIndex].uri, viewedPlayback.positionMs, "Before seeking")
+                repo.updateProgress(book.id) { it.copy(trackUri = track.uri, positionMs = position.coerceIn(0, track.durationMs)) }
+            }
+        }
+        fun seekViewedBook(absolute: Long) {
+            selectedBook?.let { book ->
+                val (index, position) = BookMath.locate(book, absolute)
+                seekViewedBook(index, position)
+            }
+        }
         fun showDialog(name: String) {
-            if (name == "Add bookmark" && currentBook != null) {
-                currentBook.tracks.getOrNull(playback.trackIndex)?.let { bookmarkTarget = BookmarkTarget(currentBook.id, it.uri, playback.positionMs) }
+            if (name == "Add bookmark" && selectedBook != null) {
+                selectedBook.tracks.getOrNull(viewedPlayback.trackIndex)?.let {
+                    bookmarkTarget = BookmarkTarget(selectedBook.id, it.uri, viewedPlayback.positionMs)
+                }
             }
             dialog = name
         }
@@ -142,23 +164,23 @@ fun Hearth(repo: LibraryRepository) {
                     IconButton(onClick = { screen = "Settings" }) { Icon(Icons.Rounded.Settings, "Settings") }
                 } else TopAppBar(title = {
                     Column {
-                        Text(if (screen == "Player") "Now listening" else screen, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (screen == "Player" && playback.castDevice != null) Text("Casting to ${playback.castDevice}",
+                        Text(if (screen == "Player") { if (viewingActiveBook) "Now listening" else "Book details" } else screen, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (screen == "Player" && viewingActiveBook && playback.castDevice != null) Text("Casting to ${playback.castDevice}",
                             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }, navigationIcon = {
                     IconButton(onClick = { screen = if (screen in listOf("Bookmarks", "Characters", "History", "Chapters")) "Player" else "Library" }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                }, actions = { if (screen == "Player") CastButton(); if (screen == "Player" && currentBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
+                }, actions = { if (screen == "Player" && viewingActiveBook) CastButton(); if (screen == "Player" && selectedBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
             },
             bottomBar = {
-                if (screen != "Player" && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
+                if ((screen != "Player" || !viewingActiveBook) && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
                     Row(Modifier.fillMaxWidth().navigationBarsPadding().clickable { selectedId = currentBook.id; screen = "Player" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Cover(currentBook, Modifier.size(48.dp))
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(currentBook.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                             Text("${BookMath.time(playback.positionMs)} · ${playback.speed}×", fontSize = 12.sp, color = Gold)
                         }
-                        IconButton(onClick = { if (playback.playing) controller?.pause() else controller?.play() }) { Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause" else "Play") }
+                        IconButton(onClick = { if (playback.playing) controller?.pause() else controller?.play() }) { Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playback.playing) "Pause current book" else "Play current book") }
                     }
                 }
             }
@@ -166,26 +188,36 @@ fun Hearth(repo: LibraryRepository) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
                     "Library" -> libraryViewState.SaveableStateProvider("Library") {
-                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" },
+                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> viewBook(book) }, { book -> selectedId = book.id; dialog = "Book options" },
                             libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() })
                     }
-                    "Player" -> if (currentBook != null) PlayerScreen(currentBook, playback,
-                        toggle = { if (playback.playing) controller?.pause() else controller?.play() },
-                        skip = { delta -> command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) }) },
-                        seek = { value -> val (index, position) = BookMath.locate(currentBook, value); controller?.seekTo(index, position) },
-                        action = { name -> when (name) { "Speed", "Sleep timer", "Add bookmark", "Sound" -> showDialog(name); else -> screen = name } })
+                    "Player" -> if (selectedBook != null) PlayerScreen(selectedBook, viewedPlayback,
+                        toggle = {
+                            if (viewingActiveBook) { if (playback.playing) controller?.pause() else controller?.play() }
+                            else command(PlaybackService.OPEN, Bundle().apply { putString("book", selectedBook.id); putBoolean("play", true) })
+                        },
+                        skip = { delta ->
+                            if (viewingActiveBook) command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) })
+                            else seekViewedBook(BookMath.absolute(selectedBook, viewedProgress.trackUri, viewedPlayback.positionMs) + delta)
+                        },
+                        seek = { seekViewedBook(it) },
+                        action = { name -> when (name) { "Speed", "Sleep timer", "Add bookmark", "Sound" -> showDialog(name); else -> screen = name } },
+                        browsing = !viewingActiveBook)
                         else EmptyState("Choose your next story", "Open an audiobook from your library to start listening.", "Open library", { screen = "Library" })
                     "Settings" -> SettingsScreen(repo, theme, { value -> theme = value; repo.preferences.edit().putString("theme", value).apply() }, { pickFolder.launch(repo.root) }, { command(PlaybackService.EFFECTS) }, { screen = "Listening statistics" })
                     "Listening statistics" -> StatisticsScreen(library.books, progress)
-                    "Bookmarks", "History", "Characters", "Chapters" -> if (currentBook != null) NotesScreen(screen, currentBook, progress[currentBook.id] ?: BookProgress(), playback, repo,
-                        { index, position -> controller?.seekTo(index, position); screen = "Player" }, { showDialog(it) })
+                    "Bookmarks", "History", "Characters", "Chapters" -> if (selectedBook != null) NotesScreen(screen, selectedBook, viewedProgress, viewedPlayback, repo,
+                        { index, position -> seekViewedBook(index, position); screen = "Player" }, { showDialog(it) })
                 }
             }
         }
         if (dialog != null) {
-            val book = if (dialog == "Book options") selectedBook else currentBook
+            val book = selectedBook
             when (dialog) {
-                "Speed" -> SpeedDialog(playback.speed, { controller?.setPlaybackSpeed(it) }, { dialog = null }, if (playback.castDevice != null) 2f else 3f)
+                "Speed" -> SpeedDialog(viewedPlayback.speed, { speed ->
+                    if (viewingActiveBook) controller?.setPlaybackSpeed(speed)
+                    else book?.let { repo.updateProgress(it.id) { value -> value.copy(speed = speed) } }
+                }, { dialog = null }, if (viewingActiveBook && playback.castDevice != null) 2f else 3f)
                 "Sleep timer" -> ChoiceDialog("Sleep timer", listOf("Off", "5 minutes", "15 minutes", "30 minutes", "45 minutes", "60 minutes", "End of current file"), { value ->
                     command(PlaybackService.SLEEP, Bundle().apply { putLong("minutes", value.substringBefore(' ').toLongOrNull() ?: 0); putBoolean("endOfTrack", value == "End of current file") }); dialog = null
                 }, { dialog = null })
@@ -316,7 +348,7 @@ private fun EmptyState(title: String, description: String, button: String, actio
 }
 
 @Composable
-internal fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, action: (String) -> Unit) {
+internal fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, skip: (Long) -> Unit, seek: (Long) -> Unit, action: (String) -> Unit, browsing: Boolean = false) {
     val track = book.tracks.getOrNull(state.trackIndex) ?: return
     val absolute = BookMath.absolute(book, track.uri, state.positionMs)
     val chapterIndex = BookMath.chapterIndex(book, state.trackIndex, state.positionMs)
@@ -362,7 +394,7 @@ internal fun PlayerScreen(book: Book, state: PlaybackState, toggle: () -> Unit, 
                     IconButton(onClick = { skip(30_000) }) { Icon(Icons.Rounded.Forward30, "Forward 30 seconds", Modifier.size(32.dp)) }
                     IconButton(onClick = { seekChapter(book.chapters[chapterIndex + 1]) }, enabled = chapterIndex < book.chapters.lastIndex) { Icon(Icons.Rounded.SkipNext, "Next chapter") }
                 }
-                PlayerTools(state, compact, action)
+                PlayerTools(state, compact, browsing, action)
             }
         }
         if (landscape) Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -398,29 +430,30 @@ private fun PlayerBookHeader(book: Book, modifier: Modifier) {
 }
 
 @Composable
-private fun PlayerTools(state: PlaybackState, compact: Boolean, action: (String) -> Unit) {
+private fun PlayerTools(state: PlaybackState, compact: Boolean, browsing: Boolean, action: (String) -> Unit) {
     var more by remember { mutableStateOf(false) }
     val timer = if (state.endOfTrack) "End of file" else if (state.sleepRemainingMs > 0) BookMath.time(state.sleepRemainingMs) else "Sleep timer"
     Column(Modifier.fillMaxWidth()) {
         if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { action("Speed") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Speed, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.speed}× speed", maxLines = 1) }
-            OutlinedButton(onClick = { action("Sleep timer") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Bedtime, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(timer, maxLines = 1) }
+            if (!browsing) OutlinedButton(onClick = { action("Sleep timer") }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Bedtime, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(timer, maxLines = 1) }
         }
         Row(Modifier.fillMaxWidth().padding(top = if (compact) 0.dp else 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             if (compact) {
                 IconButton(onClick = { action("Speed") }, modifier = Modifier.width(72.dp).semantics { contentDescription = "Playback speed" }) { Text("${state.speed.toString().removeSuffix(".0")}×", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
-                IconButton(onClick = { action("Sleep timer") }) { Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = if (state.sleepRemainingMs > 0 || state.endOfTrack) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
+                if (!browsing) IconButton(onClick = { action("Sleep timer") }) { Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = if (state.sleepRemainingMs > 0 || state.endOfTrack) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
                 IconButton(onClick = { action("Chapters") }) { Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Chapters") }
             } else {
                 ActionIcon("Bookmark", "Add bookmark", Icons.Rounded.BookmarkAdd, action)
                 ActionIcon("Chapters", "Chapters", Icons.AutoMirrored.Rounded.QueueMusic, action)
-                ActionIcon("Sound", "Sound", Icons.Rounded.Tune, action)
+                if (!browsing) ActionIcon("Sound", "Sound", Icons.Rounded.Tune, action)
             }
             Box {
                 if (compact) IconButton(onClick = { more = true }) { Icon(Icons.Rounded.MoreHoriz, "More playback options") }
                 else ActionIcon("More", "More playback options", Icons.Rounded.MoreHoriz) { more = true }
                 DropdownMenu(more, { more = false }) {
-                    val options = if (compact) listOf("Add bookmark", "Sound", "Bookmarks", "History", "Characters") else listOf("Bookmarks", "History", "Characters")
+                    val options = (if (compact) listOf("Add bookmark", "Sound", "Bookmarks", "History", "Characters") else listOf("Bookmarks", "History", "Characters"))
+                        .filterNot { browsing && it == "Sound" }
                     options.forEach { name -> DropdownMenuItem(text = { Text(name) }, onClick = { more = false; action(name) }) }
                 }
             }

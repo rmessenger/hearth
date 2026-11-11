@@ -39,7 +39,10 @@ class PlayerLayoutTest {
     @Test fun largeTextPortraitKeepsAllControlsVisible() = verify(320, 450, 2f)
     @Test fun largeTextLandscapeKeepsAllControlsVisible() = verify(640, 240, 2f)
 
-    private fun verify(width: Int, height: Int, fontScale: Float) {
+    @Test fun browsingWithMiniPlayerKeepsControlsVisible() = verify(360, 450, 1f, browsing = true)
+    @Test fun browsingWithLargeTextKeepsControlsVisible() = verify(320, 380, 2f, browsing = true)
+
+    private fun verify(width: Int, height: Int, fontScale: Float, browsing: Boolean = false) {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContent {
@@ -47,7 +50,7 @@ class PlayerLayoutTest {
                         Box(Modifier.fillMaxSize()) {
                             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale)) {
                                 Box(Modifier.offset(y = 100.dp).size(width.dp, height.dp).semantics { contentDescription = "Player viewport" }) {
-                                    PlayerScreen(book, PlaybackState(bookId = book.id, positionMs = 60_000), {}, {}, {}, {})
+                                    PlayerScreen(book, PlaybackState(bookId = book.id, positionMs = 60_000), {}, {}, {}, {}, browsing = browsing)
                                 }
                             }
                         }

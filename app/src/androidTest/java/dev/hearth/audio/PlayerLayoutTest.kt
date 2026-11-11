@@ -31,7 +31,7 @@ class PlayerLayoutTest {
     private val device = UiDevice.getInstance(instrumentation)
     private val book = Book("layout", "A Very Long Audiobook Title That Runs Across Several Lines: The Remarkable Journey Home, Volume Four of a Very Long Series",
         "A Narrator With a Long Name", listOf(Track("audio", "book.m4b", 180_000, chapters = listOf(
-            Chapter("Beginning", 0), Chapter("A chapter with a particularly long descriptive title", 45_000), Chapter("Homecoming", 90_000)))))
+            Chapter("Beginning", 0), Chapter("A chapter with a particularly long descriptive title", 45_000), Chapter("Homecoming", 90_000)))), coverAspectRatio = 307f / 475f)
 
     @Test fun portraitKeepsAllControlsVisible() = verify(360, 650, 1f)
     @Test fun smallPortraitKeepsAllControlsVisible() = verify(320, 380, 1f)

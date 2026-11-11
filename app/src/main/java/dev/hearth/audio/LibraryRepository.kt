@@ -1,5 +1,6 @@
 package dev.hearth.audio
 
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.database.ContentObserver
 import android.media.MediaMetadataRetriever
@@ -152,7 +153,9 @@ class LibraryRepository(private val context: Context) {
                         }
                     } catch (_: IllegalArgumentException) { /* Unsupported metadata; the audio can still be playable. */ }
                 }
-                books += Book(id, folder.name ?: "Untitled audiobook", author, tracks, cover)
+                val coverRatio = if (cover == oldBook?.cover && oldBook != null && oldBook.coverAspectRatio > 0) oldBook.coverAspectRatio
+                    else readCoverRatio(cover)
+                books += Book(id, folder.name ?: "Untitled audiobook", author, tracks, cover, coverAspectRatio = coverRatio)
                 if (id !in checked) {
                     positions[id] = files.firstOrNull { it.name == LegacyPositionReader.FILE_NAME }?.let { backup ->
                         try {
@@ -180,6 +183,14 @@ class LibraryRepository(private val context: Context) {
                 }
             }
         }
+    }
+    private fun readCoverRatio(cover: String?): Float {
+        if (cover == null) return 1f
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        try {
+            context.contentResolver.openInputStream(Uri.parse(cover))?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        } catch (_: IOException) { return 1f }
+        return if (bounds.outWidth > 0 && bounds.outHeight > 0) bounds.outWidth.toFloat() / bounds.outHeight else 1f
     }
     private fun readTrack(file: Entry): Track {
         var duration = 0L
@@ -211,7 +222,7 @@ class LibraryRepository(private val context: Context) {
         private const val METADATA_VERSION = 1
         val AUDIO_EXTENSIONS = setOf("mp3", "m4b", "m4a", "aac", "ogg", "opus", "flac", "wav", "mp4")
         fun encodeBooks(books: List<Book>): JSONArray = JSONArray().apply {
-            books.forEach { book -> put(JSONObject().put("id", book.id).put("title", book.title).put("author", book.author).put("cover", book.cover).put("addedAt", book.addedAt)
+            books.forEach { book -> put(JSONObject().put("id", book.id).put("title", book.title).put("author", book.author).put("cover", book.cover).put("addedAt", book.addedAt).put("coverAspectRatio", book.coverAspectRatio)
                 .put("tracks", JSONArray().apply { book.tracks.forEach { track -> put(JSONObject().put("uri", track.uri).put("name", track.name).put("duration", track.durationMs).put("size", track.size).put("modified", track.modified).put("chapters", JSONArray().apply { track.chapters.forEach { put(JSONObject().put("title", it.title).put("start", it.startMs)) } })) } })) }
         }
         fun decodeBooks(json: String): List<Book> {
@@ -226,7 +237,7 @@ class LibraryRepository(private val context: Context) {
                             val chapter = chapters.getJSONObject(j)
                             Chapter(chapter.getString("title"), chapter.getLong("start"))
                         })
-                }, book.optString("cover").takeIf { it.isNotEmpty() && it != "null" }, book.optLong("addedAt")).let { decoded ->
+                }, book.optString("cover").takeIf { it.isNotEmpty() && it != "null" }, book.optLong("addedAt"), book.optDouble("coverAspectRatio", 0.0).toFloat()).let { decoded ->
                     // Older catalogs have no discovery date; retain the best available file date.
                     if (book.has("addedAt")) decoded else decoded.copy(addedAt = decoded.tracks.maxOfOrNull { it.modified } ?: 0)
                 }

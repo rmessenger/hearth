@@ -246,7 +246,7 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
             else if (grid) LazyVerticalGrid(GridCells.Adaptive(150.dp), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(books, key = { it.id }) { book ->
                     Column(Modifier.clickable { open(book) }) {
-                        Cover(book, Modifier.fillMaxWidth().aspectRatio(1f))
+                        Cover(book, Modifier.fillMaxWidth().aspectRatio(book.coverRatio))
                         Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) { Text(progress[book.id]?.status ?: "New", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall); IconButton(onClick = { options(book) }) { Icon(Icons.Rounded.MoreHoriz, "Options for ${book.title}") } }
                     }
@@ -256,7 +256,7 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                     val state = progress[book.id] ?: BookProgress()
                     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, onClick = { open(book) }) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Cover(book, Modifier.size(84.dp))
+                            Cover(book, Modifier.width(84.dp).aspectRatio(book.coverRatio))
                             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                                 Text(state.status.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
                                 Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp))
@@ -275,11 +275,15 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
 
 @Composable
 private fun Cover(book: Book, modifier: Modifier, showTitle: Boolean = true) {
-    Box(modifier.clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(listOf(Pine, Color(0xFF496557)))), contentAlignment = Alignment.Center) {
-        if (book.cover != null) AsyncImage(book.cover, "Cover of ${book.title}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = Gold, modifier = Modifier.size(32.dp))
-            if (showTitle) Text(book.title.take(50), Modifier.padding(top = 8.dp), color = Cream, fontFamily = FontFamily.Serif, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val width = minOf(maxWidth, maxHeight * book.coverRatio)
+        Box(Modifier.size(width, width / book.coverRatio).clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(Pine, Color(0xFF496557)))), contentAlignment = Alignment.Center) {
+            if (book.cover != null) AsyncImage(book.cover, "Cover of ${book.title}", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            else Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.AutoMirrored.Rounded.MenuBook, null, tint = Gold, modifier = Modifier.size(32.dp))
+                if (showTitle) Text(book.title.take(50), Modifier.padding(top = 8.dp), color = Cream, fontFamily = FontFamily.Serif, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -366,7 +370,7 @@ private fun PlayerBookHeader(book: Book, modifier: Modifier) {
         Column(Modifier.fillMaxSize().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
                 val size = minOf(maxHeight, maxWidth, 280.dp)
-                if (size >= 64.dp) Cover(book, Modifier.size(size), showTitle = size >= 160.dp)
+                if (size >= 64.dp) Cover(book, Modifier.width(minOf(maxWidth, 280.dp)).height(maxHeight), showTitle = size >= 160.dp)
             }
             Text(book.title, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Serif,
                 maxLines = if (singleLine) 1 else 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)

@@ -4,7 +4,8 @@ import java.util.Locale
 
 data class Chapter(val title: String, val startMs: Long)
 data class Track(val uri: String, val name: String, val durationMs: Long, val size: Long = 0, val modified: Long = 0, val chapters: List<Chapter> = emptyList())
-data class Book(val id: String, val title: String, val author: String, val tracks: List<Track>, val cover: String? = null, val addedAt: Long = 0) {
+data class Book(val id: String, val title: String, val author: String, val tracks: List<Track>, val cover: String? = null, val addedAt: Long = 0, val coverAspectRatio: Float = 0f) {
+    val coverRatio: Float get() = coverAspectRatio.takeIf { it.isFinite() && it > 0 } ?: 1f
     val durationMs: Long = tracks.sumOf { it.durationMs }
     val chapters: List<BookChapter> = tracks.flatMapIndexed { index, track ->
         val embedded = track.chapters.filter { it.startMs >= 0 && it.startMs < track.durationMs }

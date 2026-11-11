@@ -4,6 +4,7 @@ package dev.hearth.audio
 
 import android.content.ComponentName
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.viewinterop.AndroidView
@@ -18,12 +19,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +45,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -95,6 +102,9 @@ fun Hearth(repo: LibraryRepository) {
         var controller by remember { mutableStateOf<MediaController?>(null) }
         var screen by rememberSaveable { mutableStateOf("Library") }
         val libraryViewState = rememberSaveableStateHolder()
+        val librarySearch = rememberTextFieldState()
+        var libraryFilter by rememberSaveable { mutableStateOf("All") }
+        val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         var dialog by rememberSaveable { mutableStateOf<String?>(null) }
         var selectedId by rememberSaveable { mutableStateOf("") }
         var bookmarkTarget by remember { mutableStateOf<BookmarkTarget?>(null) }
@@ -159,9 +169,14 @@ fun Hearth(repo: LibraryRepository) {
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
-                    if (screen == "Library") Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (screen == "Library") Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = if (landscape) 4.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Image(painterResource(R.drawable.ic_hearth), null, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Pine))
-                        Text("hearth", Modifier.padding(start = 10.dp).weight(1f), fontFamily = FontFamily.Serif, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("hearth", Modifier.padding(start = 10.dp).then(if (landscape) Modifier else Modifier.weight(1f)), fontFamily = FontFamily.Serif, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        if (landscape) {
+                            if (repo.root != null && library.books.isNotEmpty()) LibrarySearchControls(librarySearch, libraryFilter, { libraryFilter = it },
+                                Modifier.weight(1f).padding(horizontal = 16.dp))
+                            else Spacer(Modifier.weight(1f))
+                        }
                         CastButton()
                         IconButton(onClick = { screen = "Settings" }) { Icon(Icons.Rounded.Settings, "Settings") }
                     } else TopAppBar(title = {
@@ -176,7 +191,7 @@ fun Hearth(repo: LibraryRepository) {
                 },
                 bottomBar = {
                     if ((screen != "Player" || !viewingActiveBook) && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
-                        Row(Modifier.fillMaxWidth().navigationBarsPadding().clickable { selectedId = currentBook.id; screen = "Player" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).navigationBarsPadding().clickable { selectedId = currentBook.id; screen = "Player" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Cover(currentBook, Modifier.size(48.dp))
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(currentBook.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -191,7 +206,8 @@ fun Hearth(repo: LibraryRepository) {
                     when (screen) {
                         "Library" -> libraryViewState.SaveableStateProvider("Library") {
                             LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> viewBook(book) }, { book -> selectedId = book.id; dialog = "Book options" },
-                                libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() })
+                                libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() },
+                                librarySearch, libraryFilter, { libraryFilter = it }, showSearchControls = !landscape)
                         }
                         "Player" -> if (selectedBook != null) PlayerScreen(selectedBook, viewedPlayback,
                             toggle = {
@@ -240,10 +256,9 @@ fun Hearth(repo: LibraryRepository) {
 }
 
 @Composable
-private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgress>, hasFolder: Boolean, chooseFolder: () -> Unit, open: (Book) -> Unit, options: (Book) -> Unit, grid: Boolean, setGrid: (Boolean) -> Unit) {
-    val search = rememberTextFieldState()
+private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgress>, hasFolder: Boolean, chooseFolder: () -> Unit, open: (Book) -> Unit, options: (Book) -> Unit, grid: Boolean, setGrid: (Boolean) -> Unit,
+    search: TextFieldState, filter: String, setFilter: (String) -> Unit, showSearchControls: Boolean) {
     val query = search.text.toString()
-    var filter by rememberSaveable { mutableStateOf("All") }
     var sort by rememberSaveable { mutableStateOf("Recent") }
     var sortMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -267,15 +282,8 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
         } else if (!hasFolder || (library.books.isEmpty() && !library.scanning)) {
             EmptyState(if (hasFolder) "Your next chapter awaits" else "Make yourself at home", if (hasFolder) "Add audiobook folders here and they’ll appear automatically. MP3, M4B, FLAC, and more." else "Choose the folder where your audiobooks live. Your stories and listening progress stay on this device.", if (hasFolder) "Change folder" else "Choose audiobook folder", chooseFolder)
         } else {
-            OutlinedTextField(state = search, modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp).height(44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)),
-                placeholder = { Text("Find a book or author") }, leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                trailingIcon = if (query.isNotEmpty()) { {
-                    IconButton(onClick = { search.edit { replace(0, length, "") } }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Close, "Clear search") }
-                } } else null,
-                lineLimits = TextFieldLineLimits.SingleLine, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), shape = RoundedCornerShape(16.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 0.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("All", "New", "Started", "Finished").forEach { label -> FilterChip(filter == label, { filter = label }, label = { Text(label) }) }
-            }
+            if (showSearchControls) LibrarySearchControls(search, filter, setFilter,
+                Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp))
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     TextButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(sort) }
@@ -316,6 +324,51 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LibrarySearchControls(search: TextFieldState, filter: String, setFilter: (String) -> Unit, modifier: Modifier = Modifier) {
+    val focusManager = LocalFocusManager.current
+    val keyboardVisible = WindowInsets.isImeVisible
+    var keyboardWasVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(keyboardVisible) {
+        if (keyboardWasVisible && !keyboardVisible) focusManager.clearFocus()
+        keyboardWasVisible = keyboardVisible
+    }
+    val query = search.text.toString()
+    BoxWithConstraints(modifier) {
+        val controlHeight = 32.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val filterMaxWidth = maxWidth * 0.65f
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(modifier = Modifier.widthIn(max = filterMaxWidth).height(controlHeight),
+                shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState()).selectableGroup()) {
+                    listOf("All", "New", "Started", "Finished").forEachIndexed { index, label ->
+                        if (index > 0) VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Box(Modifier.fillMaxHeight()
+                            .background(if (filter == label) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                            .selectable(selected = filter == label, onClick = { setFilter(label) }, role = Role.RadioButton)
+                            .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+                                color = if (filter == label) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(state = search, modifier = Modifier.weight(1f).height(controlHeight).semantics { contentDescription = "Search books" },
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
+                placeholder = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Rounded.Search, null, Modifier.size(18.dp))
+                    Text("Search", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                } },
+                trailingIcon = if (query.isNotEmpty()) { {
+                    IconButton(onClick = { search.edit { replace(0, length, "") } }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.Close, "Clear search", Modifier.size(18.dp)) }
+                } } else null,
+                lineLimits = TextFieldLineLimits.SingleLine, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp), shape = RoundedCornerShape(12.dp))
         }
     }
 }

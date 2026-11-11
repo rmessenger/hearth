@@ -247,7 +247,6 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
     val gridState = rememberLazyGridState()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 24.dp)) {
-            Text("Your library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Medium)
             if (library.error != null) Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
                 Text(library.error, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
@@ -265,9 +264,12 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
         } else if (!hasFolder || (library.books.isEmpty() && !library.scanning)) {
             EmptyState(if (hasFolder) "Your next chapter awaits" else "Make yourself at home", if (hasFolder) "Add audiobook folders here and they’ll appear automatically. MP3, M4B, FLAC, and more." else "Choose the folder where your audiobooks live. Your stories and listening progress stay on this device.", if (hasFolder) "Change folder" else "Choose audiobook folder", chooseFolder)
         } else {
-            OutlinedTextField(state = search, modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp).heightIn(min = 48.dp),
+            OutlinedTextField(state = search, modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp).height(44.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)),
                 placeholder = { Text("Find a book or author") }, leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                lineLimits = TextFieldLineLimits.SingleLine, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp))
+                trailingIcon = if (query.isNotEmpty()) { {
+                    IconButton(onClick = { search.edit { replace(0, length, "") } }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Close, "Clear search") }
+                } } else null,
+                lineLimits = TextFieldLineLimits.SingleLine, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), shape = RoundedCornerShape(16.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 0.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("All", "New", "Started", "Finished").forEach { label -> FilterChip(filter == label, { filter = label }, label = { Text(label) }) }
             }

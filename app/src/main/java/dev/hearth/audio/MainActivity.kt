@@ -83,6 +83,7 @@ private val Gold = Color(0xFFE5AF74)
 @Composable
 fun Hearth(repo: LibraryRepository) {
     var theme by remember { mutableStateOf(repo.preferences.getString("theme", "System")!!) }
+    var libraryGrid by remember { mutableStateOf(repo.preferences.getBoolean("libraryGrid", false)) }
     val dark = theme == "Dark" || (theme == "System" && isSystemInDarkTheme())
     MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Gold, background = Color(0xFF17251F), surface = Color(0xFF17251F), surfaceContainer = Pine, secondary = Color(0xFFC2CDB9), secondaryContainer = Color(0xFF354C40), onSecondaryContainer = Cream, primaryContainer = Color(0xFF57351F), onPrimaryContainer = Cream)
         else lightColorScheme(primary = Ember, background = Cream, surface = Cream, surfaceContainer = Color(0xFFF0E7DA), secondary = Pine, secondaryContainer = Color(0xFFDCE6D9), onSecondaryContainer = Pine, primaryContainer = Color(0xFFF6DDCA), onPrimaryContainer = Ember),
@@ -165,7 +166,8 @@ fun Hearth(repo: LibraryRepository) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
                     "Library" -> libraryViewState.SaveableStateProvider("Library") {
-                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" })
+                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" },
+                            libraryGrid, { value -> libraryGrid = value; repo.preferences.edit().putBoolean("libraryGrid", value).apply() })
                     }
                     "Player" -> if (currentBook != null) PlayerScreen(currentBook, playback,
                         toggle = { if (playback.playing) controller?.pause() else controller?.play() },
@@ -203,11 +205,10 @@ fun Hearth(repo: LibraryRepository) {
 }
 
 @Composable
-private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgress>, hasFolder: Boolean, chooseFolder: () -> Unit, open: (Book) -> Unit, options: (Book) -> Unit) {
+private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgress>, hasFolder: Boolean, chooseFolder: () -> Unit, open: (Book) -> Unit, options: (Book) -> Unit, grid: Boolean, setGrid: (Boolean) -> Unit) {
     val search = rememberTextFieldState()
     val query = search.text.toString()
     var filter by rememberSaveable { mutableStateOf("All") }
-    var grid by rememberSaveable { mutableStateOf(false) }
     var sort by rememberSaveable { mutableStateOf("Recent") }
     var sortMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -244,7 +245,7 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                     DropdownMenu(sortMenu, { sortMenu = false }) { listOf("Recent", "Title").forEach { label -> DropdownMenuItem({ Text(label) }, { sort = label; sortMenu = false }) } }
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { grid = !grid }) { Icon(if (grid) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView, if (grid) "List view" else "Grid view") }
+                IconButton(onClick = { setGrid(!grid) }) { Icon(if (grid) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView, if (grid) "List view" else "Grid view") }
             }
             val books = library.books.filter { book -> (filter == "All" || (progress[book.id]?.status ?: "New") == filter) && (book.title.contains(query, true) || book.author.contains(query, true)) }.let { books ->
                 when (sort) { "Recent" -> BookMath.byRecency(books, progress); else -> books.sortedWith { a, b -> BookMath.naturalOrder.compare(a.title, b.title) } }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,6 +93,7 @@ fun Hearth(repo: LibraryRepository) {
         val context = LocalContext.current
         var controller by remember { mutableStateOf<MediaController?>(null) }
         var screen by rememberSaveable { mutableStateOf("Library") }
+        val libraryViewState = rememberSaveableStateHolder()
         var dialog by rememberSaveable { mutableStateOf<String?>(null) }
         var selectedId by rememberSaveable { mutableStateOf("") }
         var bookmarkTarget by remember { mutableStateOf<BookmarkTarget?>(null) }
@@ -161,7 +164,9 @@ fun Hearth(repo: LibraryRepository) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 when (screen) {
-                    "Library" -> LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" })
+                    "Library" -> libraryViewState.SaveableStateProvider("Library") {
+                        LibraryScreen(library, progress, repo.root != null, { pickFolder.launch(repo.root) }, { book -> openBook(book, false) }, { book -> selectedId = book.id; dialog = "Book options" })
+                    }
                     "Player" -> if (currentBook != null) PlayerScreen(currentBook, playback,
                         toggle = { if (playback.playing) controller?.pause() else controller?.play() },
                         skip = { delta -> command(PlaybackService.SKIP, Bundle().apply { putLong("delta", delta) }) },
@@ -205,6 +210,8 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
     var grid by rememberSaveable { mutableStateOf(false) }
     var sort by rememberSaveable { mutableStateOf("Recent") }
     var sortMenu by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             Text("Your library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Medium)
@@ -243,15 +250,17 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                 when (sort) { "Recent" -> BookMath.byRecency(books, progress); else -> books.sortedWith { a, b -> BookMath.naturalOrder.compare(a.title, b.title) } }
             }
             if (books.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No books match this view.") }
-            else if (grid) LazyVerticalGrid(GridCells.Adaptive(150.dp), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            else if (grid) LazyVerticalGrid(GridCells.Adaptive(150.dp), state = gridState, contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(books, key = { it.id }) { book ->
+                    val state = progress[book.id] ?: BookProgress()
                     Column(Modifier.clickable { open(book) }) {
                         Cover(book, Modifier.fillMaxWidth().aspectRatio(book.coverRatio))
                         Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) { Text(progress[book.id]?.status ?: "New", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall); IconButton(onClick = { options(book) }) { Icon(Icons.Rounded.MoreHoriz, "Options for ${book.title}") } }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text(state.status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall); IconButton(onClick = { options(book) }) { Icon(Icons.Rounded.MoreHoriz, "Options for ${book.title}") } }
+                        BookProgressBar(book, state)
                     }
                 }
-            } else LazyColumn(contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            } else LazyColumn(state = listState, contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(books, key = { it.id }) { book ->
                     val state = progress[book.id] ?: BookProgress()
                     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, onClick = { open(book) }) {
@@ -262,7 +271,7 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
                                 Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp))
                                 if (book.author.isNotBlank()) Text(book.author, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                 Text("${BookMath.remaining(book.durationMs - BookMath.absolute(book, state.trackUri, state.positionMs), state.speed)} left", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (state.status == "Started") LinearProgressIndicator(progress = { (BookMath.absolute(book, state.trackUri, state.positionMs).toFloat() / book.durationMs.coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp))
+                                BookProgressBar(book, state, Modifier.padding(top = 8.dp))
                             }
                             IconButton(onClick = { options(book) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.MoreVert, "Options for ${book.title}") }
                         }
@@ -271,6 +280,13 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
             }
         }
     }
+}
+
+@Composable
+private fun BookProgressBar(book: Book, state: BookProgress, modifier: Modifier = Modifier) {
+    if (state.status == "Started") LinearProgressIndicator(
+        progress = { (BookMath.absolute(book, state.trackUri, state.positionMs).toFloat() / book.durationMs.coerceAtLeast(1)).coerceIn(0f, 1f) },
+        modifier = modifier.fillMaxWidth().height(3.dp), drawStopIndicator = {})
 }
 
 @Composable

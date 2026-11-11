@@ -4,7 +4,7 @@ import java.util.Locale
 
 data class Chapter(val title: String, val startMs: Long)
 data class Track(val uri: String, val name: String, val durationMs: Long, val size: Long = 0, val modified: Long = 0, val chapters: List<Chapter> = emptyList())
-data class Book(val id: String, val title: String, val author: String, val tracks: List<Track>, val cover: String? = null) {
+data class Book(val id: String, val title: String, val author: String, val tracks: List<Track>, val cover: String? = null, val addedAt: Long = 0) {
     val durationMs: Long = tracks.sumOf { it.durationMs }
     val chapters: List<BookChapter> = tracks.flatMapIndexed { index, track ->
         val embedded = track.chapters.filter { it.startMs >= 0 && it.startMs < track.durationMs }
@@ -52,6 +52,9 @@ object BookMath {
             result.takeIf { it != 0 }
         } ?: left.size.compareTo(right.size)
     }
+    fun byRecency(books: List<Book>, progress: Map<String, BookProgress>): List<Book> =
+        books.sortedWith(compareByDescending<Book> { maxOf(it.addedAt, progress[it.id]?.lastPlayed ?: 0) }
+            .thenComparator { a, b -> naturalOrder.compare(a.title, b.title) })
     fun absolute(book: Book, trackUri: String, position: Long): Long {
         val index = book.tracks.indexOfFirst { it.uri == trackUri }.coerceAtLeast(0)
         return book.tracks.take(index).sumOf { it.durationMs } + position.coerceIn(0, book.tracks.getOrNull(index)?.durationMs ?: 0)

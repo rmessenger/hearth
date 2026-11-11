@@ -18,6 +18,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
@@ -197,15 +199,15 @@ fun Hearth(repo: LibraryRepository) {
 
 @Composable
 private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgress>, hasFolder: Boolean, chooseFolder: () -> Unit, open: (Book) -> Unit, options: (Book) -> Unit) {
-    var query by rememberSaveable { mutableStateOf("") }
+    val search = rememberTextFieldState()
+    val query = search.text.toString()
     var filter by rememberSaveable { mutableStateOf("All") }
     var grid by rememberSaveable { mutableStateOf(false) }
-    var sort by rememberSaveable { mutableStateOf("Title") }
+    var sort by rememberSaveable { mutableStateOf("Recent") }
     var sortMenu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             Text("Your library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Medium)
-            Text(if (library.scanning) "Looking for new stories…" else "${library.books.size} audiobooks · Automatically kept up to date", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp, bottom = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (library.error != null) Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
                 Text(library.error, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
@@ -223,20 +225,22 @@ private fun LibraryScreen(library: LibraryState, progress: Map<String, BookProgr
         } else if (!hasFolder || (library.books.isEmpty() && !library.scanning)) {
             EmptyState(if (hasFolder) "Your next chapter awaits" else "Make yourself at home", if (hasFolder) "Add audiobook folders here and they’ll appear automatically. MP3, M4B, FLAC, and more." else "Choose the folder where your audiobooks live. Your stories and listening progress stay on this device.", if (hasFolder) "Change folder" else "Choose audiobook folder", chooseFolder)
         } else {
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 24.dp), placeholder = { Text("Find a book or author") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(state = search, modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 12.dp).heightIn(min = 48.dp),
+                placeholder = { Text("Find a book or author") }, leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                lineLimits = TextFieldLineLimits.SingleLine, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(16.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 0.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("All", "New", "Started", "Finished").forEach { label -> FilterChip(filter == label, { filter = label }, label = { Text(label) }) }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     TextButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Rounded.Sort, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(sort) }
-                    DropdownMenu(sortMenu, { sortMenu = false }) { listOf("Title", "Recently listened", "Author").forEach { label -> DropdownMenuItem({ Text(label) }, { sort = label; sortMenu = false }) } }
+                    DropdownMenu(sortMenu, { sortMenu = false }) { listOf("Recent", "Title").forEach { label -> DropdownMenuItem({ Text(label) }, { sort = label; sortMenu = false }) } }
                 }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = { grid = !grid }) { Icon(if (grid) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView, if (grid) "List view" else "Grid view") }
             }
             val books = library.books.filter { book -> (filter == "All" || (progress[book.id]?.status ?: "New") == filter) && (book.title.contains(query, true) || book.author.contains(query, true)) }.let { books ->
-                when (sort) { "Recently listened" -> books.sortedByDescending { progress[it.id]?.lastPlayed ?: 0 }; "Author" -> books.sortedBy { it.author.lowercase() }; else -> books }
+                when (sort) { "Recent" -> BookMath.byRecency(books, progress); else -> books.sortedWith { a, b -> BookMath.naturalOrder.compare(a.title, b.title) } }
             }
             if (books.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No books match this view.") }
             else if (grid) LazyVerticalGrid(GridCells.Adaptive(150.dp), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {

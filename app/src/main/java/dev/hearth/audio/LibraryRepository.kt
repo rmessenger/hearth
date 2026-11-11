@@ -93,7 +93,9 @@ class LibraryRepository(private val context: Context) {
                     preferences.edit().putBoolean("positionChecked:$id", true).apply()
                 }
             }
-            val books = result.books
+            val previousById = previous.associateBy { it.id }
+            val discoveredAt = System.currentTimeMillis()
+            val books = result.books.map { it.copy(addedAt = previousById[it.id]?.addedAt ?: discoveredAt) }
             if (books != previous) preferences.edit().putString("catalog", encodeBooks(books).toString()).apply()
             preferences.edit().putInt("metadataVersion", METADATA_VERSION).apply()
             mutableLibrary.value = LibraryState(books, scannedAt = System.currentTimeMillis())
@@ -209,7 +211,7 @@ class LibraryRepository(private val context: Context) {
         private const val METADATA_VERSION = 1
         val AUDIO_EXTENSIONS = setOf("mp3", "m4b", "m4a", "aac", "ogg", "opus", "flac", "wav", "mp4")
         fun encodeBooks(books: List<Book>): JSONArray = JSONArray().apply {
-            books.forEach { book -> put(JSONObject().put("id", book.id).put("title", book.title).put("author", book.author).put("cover", book.cover)
+            books.forEach { book -> put(JSONObject().put("id", book.id).put("title", book.title).put("author", book.author).put("cover", book.cover).put("addedAt", book.addedAt)
                 .put("tracks", JSONArray().apply { book.tracks.forEach { track -> put(JSONObject().put("uri", track.uri).put("name", track.name).put("duration", track.durationMs).put("size", track.size).put("modified", track.modified).put("chapters", JSONArray().apply { track.chapters.forEach { put(JSONObject().put("title", it.title).put("start", it.startMs)) } })) } })) }
         }
         fun decodeBooks(json: String): List<Book> {
@@ -224,7 +226,10 @@ class LibraryRepository(private val context: Context) {
                             val chapter = chapters.getJSONObject(j)
                             Chapter(chapter.getString("title"), chapter.getLong("start"))
                         })
-                }, book.optString("cover").takeIf { it.isNotEmpty() && it != "null" })
+                }, book.optString("cover").takeIf { it.isNotEmpty() && it != "null" }, book.optLong("addedAt")).let { decoded ->
+                    // Older catalogs have no discovery date; retain the best available file date.
+                    if (book.has("addedAt")) decoded else decoded.copy(addedAt = decoded.tracks.maxOfOrNull { it.modified } ?: 0)
+                }
             }
         }
         fun encodeProgress(value: BookProgress): JSONObject = JSONObject().put("track", value.trackUri).put("position", value.positionMs)

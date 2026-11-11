@@ -68,6 +68,15 @@ class PlaybackIntegrationTest {
         assertEquals(listOf("chapter2.mp3", "chapter10.mp3"), book.tracks.map { it.name })
         assertTrue(book.tracks.all { it.durationMs > 120_000 })
         assertTrue(book.cover!!.endsWith("cover.jpg"))
+        assertTrue(book.addedAt > 0)
+        val persisted = LibraryRepository.decodeBooks(repo.preferences.getString("catalog", "[]")!!).first { it.id == book.id }
+        assertEquals(book.addedAt, persisted.addedAt)
+        val legacyCatalog = LibraryRepository.encodeBooks(listOf(book))
+        legacyCatalog.getJSONObject(0).remove("addedAt")
+        assertEquals(book.tracks.maxOf { it.modified }, LibraryRepository.decodeBooks(legacyCatalog.toString()).single().addedAt)
+        onMain { repo.preferences.edit().putInt("metadataVersion", 0).apply() }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { repo.scan() }
+        assertEquals(book.addedAt, repo.state.value.books.first { it.id == book.id }.addedAt)
         device.executeShellCommand("rm -rf $directory")
         val refreshed = withTimeout(25_000) { repo.state.first { state -> state.books.none { it.id == book.id } } }
         assertFalse(refreshed.books.any { it.title == name })

@@ -49,4 +49,17 @@ class BookMathTest {
         assertEquals(listOf(10_000L, 40_000L, 40_000L), book.chapters.map { it.durationMs })
         assertEquals(-1, BookMath.chapterIndex(book.copy(tracks = emptyList()), 0, 0))
     }
+    @Test fun recentSortUsesTheNewerOfAddedAndPlayedDates() {
+        val older = book.copy(id = "older", addedAt = 100)
+        val played = book.copy(id = "played", addedAt = 50)
+        val added = book.copy(id = "added", addedAt = 400)
+        val progress = mapOf("played" to BookProgress(lastPlayed = 300), "added" to BookProgress(lastPlayed = 200))
+        assertEquals(listOf(added, played, older), BookMath.byRecency(listOf(older, played, added), progress))
+    }
+    @Test fun recentSortBreaksTiesByNaturalTitleOrder() {
+        val two = book.copy(id = "two", title = "Book 2")
+        val ten = book.copy(id = "ten", title = "Book 10")
+        assertEquals(listOf(two, ten), BookMath.byRecency(listOf(ten, two), emptyMap()))
+    }
+
 }

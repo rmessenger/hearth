@@ -10,8 +10,8 @@ android {
         applicationId = "dev.hearth.audio"
         minSdk = 33
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.1-preview"
+        versionCode = 7
+        versionName = "1.1.0-cast-test"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -40,8 +40,11 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
-    implementation("androidx.media3:media3-exoplayer:1.8.0")
-    implementation("androidx.media3:media3-session:1.8.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-session:1.11.1")
+    implementation("androidx.media3:media3-cast:1.11.1")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     testImplementation("junit:junit:4.13.2")

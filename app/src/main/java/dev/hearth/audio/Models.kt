@@ -29,7 +29,15 @@ data class BookProgress(
     val lastPlayed: Long = 0, val listenedMs: Long = 0,
 )
 data class LibraryState(val books: List<Book> = emptyList(), val scanning: Boolean = false, val error: String? = null, val scannedAt: Long = 0)
-data class PlaybackState(val bookId: String = "", val trackIndex: Int = 0, val positionMs: Long = 0, val playing: Boolean = false, val speed: Float = 1f, val sleepRemainingMs: Long = 0, val endOfTrack: Boolean = false, val error: String? = null)
+data class PlaybackState(val bookId: String = "", val trackIndex: Int = 0, val positionMs: Long = 0, val playing: Boolean = false, val speed: Float = 1f, val sleepRemainingMs: Long = 0, val endOfTrack: Boolean = false, val error: String? = null, val castDevice: String? = null)
+
+internal fun PlaybackState.withCastLoadingFallback(previous: PlaybackState, hasMediaItem: Boolean): PlaybackState {
+    if (castDevice == null || hasMediaItem || previous.bookId.isEmpty() ||
+        (bookId.isNotEmpty() && bookId != previous.bookId)) return this
+    // Cast briefly has no queue while the receiver loads the transferred book.
+    return copy(bookId = previous.bookId, trackIndex = previous.trackIndex,
+        positionMs = previous.positionMs, speed = previous.speed, playing = false)
+}
 
 object BookMath {
     private val tokens = Regex("\\d+|\\D+")

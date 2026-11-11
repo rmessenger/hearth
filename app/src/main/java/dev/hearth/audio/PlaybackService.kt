@@ -15,6 +15,11 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.*
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.RemoteCastPlayer
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.MediaStatus
+import java.io.IOException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.*
@@ -26,7 +31,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.sqrt
 
 class PlaybackService : MediaLibraryService(), SensorEventListener {
-    private lateinit var player: ExoPlayer
+    private lateinit var player: Player
+    private lateinit var localPlayer: ExoPlayer
+    private lateinit var castMedia: CastMedia
+    private var castPlayer: CastPlayer? = null
+    private var lastVolume = 1f
+    private var transferFailed = false
+    private val casting get() = castPlayer?.isCastSessionAvailable == true
     private lateinit var session: MediaLibrarySession
     private lateinit var repo: LibraryRepository
     private val handler = Handler(Looper.getMainLooper())
@@ -55,7 +66,15 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                 val wasPlaying = player.isPlaying
                 player.pause(); sleepDeadline = 0; sleepExpired = if (wasPlaying) now else 0
             }
-            player.volume = if (sleepDeadline > 0 && player.isPlaying) ((sleepDeadline - now).toFloat() / 15_000).coerceIn(0f, 1f) else 1f
+            val volume = if (sleepDeadline > 0 && player.isPlaying) ((sleepDeadline - now).toFloat() / 15_000).coerceIn(0f, 1f) else 1f
+            if (volume != lastVolume) { player.volume = volume; lastVolume = volume }
+            if (casting) {
+                if (!castMedia.networkAvailable()) disconnectCast("Wi-Fi changed or disconnected. Reconnect to the same Wi-Fi as your Cast device and try again.")
+                val status = CastContext.getSharedInstance(this@PlaybackService).sessionManager.currentCastSession?.remoteMediaClient?.mediaStatus
+                if (status?.idleReason == MediaStatus.IDLE_REASON_ERROR) {
+                    playbackError = "The Cast device could not play this file. Check Wi-Fi access and try an MP3 or AAC audiobook; supported formats depend on the receiver."
+                }
+            }
             if (++saveTicks >= 5) { save(); saveTicks = 0 }
             publish()
             handler.postDelayed(this, 1000)
@@ -64,9 +83,41 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         repo = (application as HearthApp).library
-        player = ExoPlayer.Builder(this).setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
+        localPlayer = ExoPlayer.Builder(this).setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true).setWakeMode(C.WAKE_MODE_LOCAL).setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(30_000).build()
-        player.skipSilenceEnabled = repo.preferences.getBoolean("skipSilence", false)
+        localPlayer.skipSilenceEnabled = repo.preferences.getBoolean("skipSilence", false)
+        castMedia = CastMedia(this) { message -> handler.post { playbackError = message; publish() } }
+        val remote = RemoteCastPlayer.Builder(this).setMediaItemConverter(castMedia)
+            .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(30_000).build()
+        castPlayer = CastPlayer.Builder(this).setLocalPlayer(localPlayer).setRemotePlayer(remote)
+            .setTransferCallback { source, target ->
+                save()
+                pausedAt = 0
+                if (target === remote) {
+                    try {
+                        transferFailed = false
+                        castMedia.start()
+                        castMedia.retain((0 until source.mediaItemCount).map(source::getMediaItemAt))
+                        CastPlayer.TransferCallback.DEFAULT.transferState(source, target)
+                        playbackError = null
+                    } catch (_: IOException) {
+                        transferFailed = true
+                        source.pause()
+                        handler.post { disconnectCast("Casting needs a reachable Wi-Fi connection. Connect both devices to the same network and try again.") }
+                    } catch (_: SecurityException) {
+                        transferFailed = true
+                        source.pause()
+                        handler.post { disconnectCast("Android blocked access to the local network. Check Hearth’s network permissions and try again.") }
+                    }
+                } else {
+                    if (!transferFailed) CastPlayer.TransferCallback.DEFAULT.transferState(source, target)
+                    transferFailed = false
+                    target.pause()
+                    castMedia.stop()
+                }
+                lastVolume = 1f
+            }.build()
+        player = checkNotNull(castPlayer)
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 save(); publish(); HearthWidget.updateAll(this@PlaybackService)
@@ -96,7 +147,9 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                 publish()
             }
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
-                if (currentBookId.isNotEmpty()) repo.updateProgress(currentBookId) { it.copy(speed = playbackParameters.speed) }
+                player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")?.let { bookId ->
+                    repo.updateProgress(bookId) { it.copy(speed = playbackParameters.speed) }
+                }
                 publish()
             }
             override fun onPlayerError(error: PlaybackException) {
@@ -104,7 +157,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                 publish()
             }
         })
-        player.addAnalyticsListener(object : AnalyticsListener {
+        localPlayer.addAnalyticsListener(object : AnalyticsListener {
             override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
                 equalizer?.release(); loudness?.release()
                 try {
@@ -156,7 +209,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
                     sleepExpired = 0; endOfTrack = args.getBoolean("endOfTrack")
                 }
                 SKIP -> skip(args.getLong("delta"))
-                EFFECTS -> { player.skipSilenceEnabled = repo.preferences.getBoolean("skipSilence", false); applyEffects() }
+                EFFECTS -> { localPlayer.skipSilenceEnabled = repo.preferences.getBoolean("skipSilence", false); applyEffects() }
             }
             publish()
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -192,8 +245,8 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
     private fun items(book: Book): List<MediaItem> = book.tracks.map { track ->
         MediaItem.Builder().setMediaId(track.uri).setUri(track.uri).setMediaMetadata(MediaMetadata.Builder()
             .setTitle(book.title).setArtist(book.author.ifBlank { track.name }).setAlbumTitle(book.title).setSubtitle(track.name)
-            .setArtworkUri(book.cover?.let(Uri::parse)).setExtras(Bundle().apply { putString("bookId", book.id) }).setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK).build()).build()
-    }
+            .setArtworkUri(book.cover?.let(Uri::parse)).setExtras(Bundle().apply { putString("bookId", book.id); putLong("durationMs", track.durationMs) }).setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK).build()).build()
+    }.also { castMedia.retain(it) }
     private fun restoreLastBook() {
         repo.state.value.books.firstOrNull { it.id == repo.preferences.getString("currentBook", null) }?.let { openBook(it, false) }
     }
@@ -202,7 +255,8 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
         save(); player.pause(); currentBookId = ""
         val progress = repo.getProgress(book.id)
         val index = book.tracks.indexOfFirst { it.uri == progress.trackUri }.coerceAtLeast(0)
-        player.setMediaItems(items(book), index, progress.positionMs)
+        val mediaItems = items(book)
+        player.setMediaItems(mediaItems, index, progress.positionMs)
         currentBookId = book.id
         player.setPlaybackSpeed(progress.speed)
         playbackError = null; pausedAt = 0
@@ -243,8 +297,17 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
         }
     }
     private fun publish() {
-        mutableState.value = PlaybackState(currentBookId, player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition.coerceAtLeast(0), player.isPlaying, player.playbackParameters.speed,
-            if (sleepDeadline > 0) (sleepDeadline - SystemClock.elapsedRealtime()).coerceAtLeast(0) else 0, endOfTrack, playbackError)
+        val next = PlaybackState(currentBookId, player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition.coerceAtLeast(0), player.isPlaying, player.playbackParameters.speed,
+            if (sleepDeadline > 0) (sleepDeadline - SystemClock.elapsedRealtime()).coerceAtLeast(0) else 0, endOfTrack, playbackError,
+            if (casting) CastContext.getSharedInstance(this).sessionManager.currentCastSession?.castDevice?.friendlyName ?: "Cast device" else null)
+            .withCastLoadingFallback(mutableState.value, player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId") != null)
+        currentBookId = next.bookId
+        mutableState.value = next
+    }
+    private fun disconnectCast(message: String) {
+        playbackError = message
+        CastContext.getSharedInstance(this).sessionManager.endCurrentSession(true)
+        publish()
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -255,7 +318,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
         }
         return super.onStartCommand(intent, flags, startId)
     }
-    override fun onTaskRemoved(rootIntent: Intent?) { if (!player.playWhenReady) stopSelf() }
+    override fun onTaskRemoved(rootIntent: Intent?) { if (!player.playWhenReady && !casting) stopSelf() }
     override fun onSensorChanged(event: SensorEvent) {
         if (!repo.preferences.getBoolean("shake", true)) return
         val force = sqrt(event.values.sumOf { (it * it).toDouble() }) / SensorManager.GRAVITY_EARTH
@@ -270,7 +333,7 @@ class PlaybackService : MediaLibraryService(), SensorEventListener {
     override fun onDestroy() {
         save(); handler.removeCallbacksAndMessages(null)
         (getSystemService(SENSOR_SERVICE) as SensorManager).unregisterListener(this)
-        equalizer?.release(); loudness?.release(); session.release(); player.release()
+        equalizer?.release(); loudness?.release(); session.release(); player.release(); castMedia.stop()
         mutableState.value = PlaybackState()
         super.onDestroy()
     }

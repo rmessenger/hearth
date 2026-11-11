@@ -1,9 +1,21 @@
 <resources>
-    <style name="Theme.Hearth" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.Hearth" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:colorAccent">#98452D</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
     <color name="icon_background">#23372F</color>
+    <style name="ThemeOverlay.Hearth.Cast.Light" parent="ThemeOverlay.AppCompat.Light">
+        <item name="mediaRouteButtonStyle">@style/Widget.Hearth.Cast.Light</item>
+    </style>
+    <style name="ThemeOverlay.Hearth.Cast.Dark" parent="ThemeOverlay.AppCompat.Dark">
+        <item name="mediaRouteButtonStyle">@style/Widget.Hearth.Cast.Dark</item>
+    </style>
+    <style name="Widget.Hearth.Cast.Light" parent="Widget.MediaRouter.MediaRouteButton">
+        <item name="mediaRouteButtonTint">#23372F</item>
+    </style>
+    <style name="Widget.Hearth.Cast.Dark" parent="Widget.MediaRouter.MediaRouteButton">
+        <item name="mediaRouteButtonTint">#FBF5ED</item>
+    </style>
 </resources>

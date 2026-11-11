@@ -15,7 +15,7 @@ An offline audiobook player for Android, written in Kotlin and Jetpack Compose. 
 
 ## Use it
 
-Install the signed APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account or network permission is required.
+Install the signed APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account is required. Local playback works offline; optional Chromecast playback uses network access.
 
 Opening a book restores its position without starting playback; tap Play when ready. Returning to a book that is already playing keeps playback running.
 
@@ -33,7 +33,7 @@ The library refreshes on return to the app and checks for changes while open. Th
 - Bookmarks, position history, character notes, listening totals, and New/Started/Finished classification.
 - Search, sorting, list/grid layouts, light/dark themes, and a home-screen playback widget.
 
-This first version focuses on the offline player. Chromecast, audio conversion, online cover/description lookup, and scheduled sleep timers are not implemented. Media-library integration is present, but Android Auto and physical Bluetooth/headset hardware have not been certified or road-tested. There is no DRM support.
+This first version focuses on the offline player. Audio conversion, online cover/description lookup, and scheduled sleep timers are not implemented. Media-library integration is present, but Android Auto and physical Bluetooth/headset hardware have not been certified or road-tested. There is no DRM support.
 
 Progress is local to this installation. Uninstalling or clearing app data removes progress and notes; it does not remove the audiobook files. Cloud backup and device transfer are disabled because persisted storage grants are device-specific.
 
@@ -61,3 +61,9 @@ scripts/seed-test-library.sh
 ```
 
 The seed script needs `adb` and `ffmpeg` in PATH. Tests cover automatic addition/removal, natural ordering, cover detection, speed/position persistence, background playback, media pause, cross-file seeks/history, and end-of-file sleep. JVM tests cover timeline arithmetic and both M4B chapter formats. See [validation notes](docs/validation.md).
+
+### Chromecast
+
+Use the Cast button in the library or player to choose a device on the same Wi-Fi network. Your phone serves the selected audiobook and cover directly to the receiver; no audiobook upload or Hearth backend is involved. Keep the phone connected to Wi-Fi. Disconnecting returns playback to the phone, paused at the current position.
+
+Chapter navigation, bookmarks, and sleep timers use the shared player. Cast supports 0.5–2× speed; equalizer, volume boost, and skip silence apply only to phone playback. Audio format support depends on the receiver (MP3 and AAC in M4A/M4B are good starting points); Hearth does not transcode files. Guest networks that isolate devices will prevent streaming.

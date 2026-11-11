@@ -5,7 +5,12 @@ package dev.hearth.audio
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.luminance
+import androidx.appcompat.view.ContextThemeWrapper
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -55,7 +60,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.UUID
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private val repo get() = (application as HearthApp).library
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,10 +132,17 @@ fun Hearth(repo: LibraryRepository) {
                 if (screen == "Library") Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Image(painterResource(R.drawable.ic_hearth), null, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Pine))
                     Text("hearth", Modifier.padding(start = 10.dp).weight(1f), fontFamily = FontFamily.Serif, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    CastButton()
                     IconButton(onClick = { screen = "Settings" }) { Icon(Icons.Rounded.Settings, "Settings") }
-                } else TopAppBar(title = { Text(if (screen == "Player") "Now listening" else screen, fontFamily = FontFamily.Serif) }, navigationIcon = {
+                } else TopAppBar(title = {
+                    Column {
+                        Text(if (screen == "Player") "Now listening" else screen, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (screen == "Player" && playback.castDevice != null) Text("Casting to ${playback.castDevice}",
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }, navigationIcon = {
                     IconButton(onClick = { screen = if (screen in listOf("Bookmarks", "Characters", "History", "Chapters")) "Player" else "Library" }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                }, actions = { if (screen == "Player" && currentBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
+                }, actions = { if (screen == "Player") CastButton(); if (screen == "Player" && currentBook != null) IconButton(onClick = { dialog = "Book options" }) { Icon(Icons.Rounded.MoreVert, "Book options") } })
             },
             bottomBar = {
                 if (screen != "Player" && currentBook != null) Surface(color = Pine, contentColor = Cream, tonalElevation = 6.dp) {
@@ -164,11 +176,11 @@ fun Hearth(repo: LibraryRepository) {
         if (dialog != null) {
             val book = if (dialog == "Book options") selectedBook else currentBook
             when (dialog) {
-                "Speed" -> SpeedDialog(playback.speed, { controller?.setPlaybackSpeed(it) }, { dialog = null })
+                "Speed" -> SpeedDialog(playback.speed, { controller?.setPlaybackSpeed(it) }, { dialog = null }, if (playback.castDevice != null) 2f else 3f)
                 "Sleep timer" -> ChoiceDialog("Sleep timer", listOf("Off", "5 minutes", "15 minutes", "30 minutes", "45 minutes", "60 minutes", "End of current file"), { value ->
                     command(PlaybackService.SLEEP, Bundle().apply { putLong("minutes", value.substringBefore(' ').toLongOrNull() ?: 0); putBoolean("endOfTrack", value == "End of current file") }); dialog = null
                 }, { dialog = null })
-                "Sound" -> SoundDialog(repo, { command(PlaybackService.EFFECTS) }, { dialog = null })
+                "Sound" -> if (playback.castDevice != null) AlertDialog(onDismissRequest = { dialog = null }, title = { Text("Sound while casting") }, text = { Text("Equalizer, volume boost, and skip silence apply only to playback on your phone. Use your Cast device’s volume controls while casting.") }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("Close") } }) else SoundDialog(repo, { command(PlaybackService.EFFECTS) }, { dialog = null })
                 "Add bookmark" -> TextEntryDialog("Bookmark this moment", "Note", { note ->
                     bookmarkTarget?.let { target -> repo.bookmark(target.bookId, target.trackUri, target.positionMs, note.ifBlank { "Bookmark" }) }
                     dialog = null
@@ -395,5 +407,20 @@ private fun PlayerTools(state: PlaybackState, compact: Boolean, action: (String)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = { action(description) }) { Icon(icon, description) }
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
+
+@Composable
+private fun CastButton() {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    key(dark) {
+        AndroidView(modifier = Modifier.size(48.dp), factory = { context ->
+            val theme = if (dark) R.style.ThemeOverlay_Hearth_Cast_Dark else R.style.ThemeOverlay_Hearth_Cast_Light
+            MediaRouteButton(ContextThemeWrapper(context, theme)).apply {
+                contentDescription = "Cast to a device"
+                setAlwaysVisible(true)
+                CastButtonFactory.setUpMediaRouteButton(context, this)
+            }
+        })
     }
 }

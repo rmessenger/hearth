@@ -125,13 +125,13 @@ fun CharacterDialog(save: (String, String) -> Unit, dismiss: () -> Unit) {
     AlertDialog(onDismissRequest = dismiss, title = { Text("Add character") }, text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true); OutlinedTextField(note, { note = it }, label = { Text("Who are they?") }) } }, confirmButton = { TextButton(onClick = { save(name.trim(), note) }, enabled = name.isNotBlank()) { Text("Save") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
 }
 @Composable
-fun SpeedDialog(speed: Float, change: (Float) -> Unit, dismiss: () -> Unit) {
-    var value by remember { mutableFloatStateOf(speed) }
+fun SpeedDialog(speed: Float, change: (Float) -> Unit, dismiss: () -> Unit, maximum: Float = 3f) {
+    var value by remember { mutableFloatStateOf(speed.coerceIn(0.5f, maximum)) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Playback speed") }, text = { Column {
         Text("%.2f×".format(value), style = MaterialTheme.typography.headlineLarge)
-        Slider(value, { value = (it * 20).toInt() / 20f }, valueRange = 0.5f..3f, steps = 49, onValueChangeFinished = { change(value) })
+        Slider(value, { value = (it * 20).toInt() / 20f }, valueRange = 0.5f..maximum, steps = ((maximum - 0.5f) * 20).toInt() - 1, onValueChangeFinished = { change(value) })
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(1f, 1.25f, 1.5f, 2f).forEach { rate -> FilterChip(value == rate, { value = rate; change(rate) }, { Text("${rate}×") }) } }
-        Text("Saved for this book. Pitch stays natural.", style = MaterialTheme.typography.bodySmall)
+        Text(if (maximum == 2f) "Cast supports speeds from 0.5× to 2×. Saved for this book." else "Saved for this book. Pitch stays natural.", style = MaterialTheme.typography.bodySmall)
     } }, confirmButton = { TextButton(onClick = { change(value); dismiss() }) { Text("Done") } })
 }
 @Composable

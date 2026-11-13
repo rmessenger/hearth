@@ -67,3 +67,7 @@ The seed script needs `adb` and `ffmpeg` in PATH. Tests cover automatic addition
 Use the Cast button in the library or player to choose a device on the same Wi-Fi network. Your phone serves the selected audiobook and cover directly to the receiver; no audiobook upload or Hearth backend is involved. Keep the phone connected to Wi-Fi. Disconnecting returns playback to the phone, paused at the current position.
 
 Chapter navigation, bookmarks, and sleep timers use the shared player. Cast supports 0.5–2× speed; equalizer, volume boost, and skip silence apply only to phone playback. Audio format support depends on the receiver (MP3 and AAC in M4A/M4B are good starting points); Hearth does not transcode files. Guest networks that isolate devices will prevent streaming.
+
+## License
+
+[MIT](LICENSE). Third-party dependencies retain their own licenses.

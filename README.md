@@ -2,7 +2,9 @@
 
 An offline audiobook player for Android, written in Kotlin and Jetpack Compose. Organize your library, follow chapter progress, and pick up where you left off.
 
-**Coming soon to Google Play.**
+<a href="https://play.google.com/store/apps/details?id=dev.hearth.audio">
+  <img src="docs/google-play-badge.png" alt="Get it on Google Play" width="200" />
+</a>
 
 [Privacy policy](https://rmessenger.github.io/hearth/privacy.html)
 
@@ -15,7 +17,7 @@ An offline audiobook player for Android, written in Kotlin and Jetpack Compose. 
 
 ## Use it
 
-Install the signed APK, open Hearth, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account is required. Local playback works offline; optional Chromecast playback uses network access.
+Install Hearth from [Google Play](https://play.google.com/store/apps/details?id=dev.hearth.audio), open the app, and choose your audiobook folder. Put each book in a subfolder; author/book nesting is supported. Folder JPG/PNG covers and embedded artwork are recognized. No account is required. Local playback works offline; optional Chromecast playback uses network access.
 
 Opening a book restores its position without starting playback; tap Play when ready. Returning to a book that is already playing keeps playback running.
 
